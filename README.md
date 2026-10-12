@@ -1,6 +1,8 @@
 # dotreach
 
-Typed, zero-dependency get/set/delete/has on nested dicts and lists by dotted path.
+Typed, zero-dependency access to nested dicts and lists by dotted path: get, set,
+delete, has, pop, flatten, unflatten, wildcard matching, non-mutating updates, and a
+`dotreach` command for JSON on the shell.
 
 ## Install
 
@@ -18,44 +20,92 @@ data = {"user": {"name": "Ada", "roles": ["admin", "editor"]}}
 dotreach.get(data, "user.name")            # "Ada"
 dotreach.get(data, "user.roles.0")         # "admin"  (integers index sequences)
 dotreach.get(data, "user.roles.-1")        # "editor" (negative indices work)
-dotreach.get(data, "user.age", default=0)  # 0        (no default: raises KeyError)
-
+dotreach.get(data, "user.age", default=0)  # 0        (no default: raises PathNotFoundError)
 dotreach.has(data, "user.roles.1")         # True
 
-dotreach.set(data, "user.age", 36)         # missing dict keys are created
+dotreach.set(data, "user.age", 36)  # missing dict keys are created
 dotreach.set(data, "user.roles.0", "owner")
-
 dotreach.delete(data, "user.roles.1")
 dotreach.delete(data, "user.nope", missing_ok=True)
 ```
 
-Mapping segments are always treated as keys and sequence segments as integer
-indices, so there is no ambiguity: `get({"0": "x"}, "0")` returns `"x"`, while
-`get(["x"], "0")` returns the first element. Strings and bytes are never indexed
-into. Need a different delimiter? Pass `sep`:
+Mapping segments are always keys and sequence segments are integer indices, so there
+is no ambiguity: `get({"0": "x"}, "0")` returns `"x"`, while `get(["x"], "0")` returns
+the first element. Strings and bytes are never indexed into.
+
+### Paths
+
+A path is a dotted string or a sequence of segments. Sequences take exact keys, so
+they reach keys that contain dots and non-string keys:
 
 ```python
-dotreach.get({"a": {"b": 1}}, "a/b", sep="/")  # 1
+dotreach.get({"a.b": {1: "x"}}, ("a.b", 1))     # "x"
+dotreach.get({"a/b": 1}, "a/b", sep="/")        # custom separator
+dotreach.get({"a.b": 1}, r"a\.b", escape=True)  # backslash escapes the separator
+dotreach.join_path(["files", "report.pdf"])     # 'files.report\\.pdf'
+dotreach.split_path(r"files.report\.pdf")       # ['files', 'report.pdf']
 ```
+
+### More operations
+
+```python
+dotreach.pop(data, "user.age")  # remove and return
+dotreach.setdefault(data, "user.prefs.theme", "dark")
+port: int = dotreach.get_as(cfg, "server.port", int)  # checked and typed for mypy
+
+dotreach.set({}, "tags.0.name", "x", create_lists=True)  # {"tags": [{"name": "x"}]}
+
+new = dotreach.set_copy(data, "user.name", "Lin")  # data is untouched
+new = dotreach.delete_copy(data, "user.roles")     # works on tuples too
+
+dotreach.flatten({"db": {"host": "x", "ports": [5432]}})
+# {"db.host": "x", "db.ports.0": 5432}
+dotreach.unflatten({"db.host": "x", "db.ports.0": 5432}, create_lists=True)
+# {"db": {"host": "x", "ports": [5432]}}
+dotreach.glob({"users": [{"name": "Ada"}, {"name": "Lin"}]}, "users.*.name")
+# {"users.0.name": "Ada", "users.1.name": "Lin"}
+```
+
+`walk` and `leaves` iterate every leaf path lazily. Every error is a typed
+`DotreachError` naming the path, the failing segment and its position, and each one
+also subclasses the built-in error the 0.1 release raised (`KeyError`, `TypeError`,
+`IndexError`, `ValueError`), so existing `except` clauses keep working.
+
+See [GUIDE.md](GUIDE.md) for every function, option and rule.
+
+## Command line
+
+```
+dotreach get user.name data.json              "Ada"
+dotreach get user.name --raw data.json        Ada
+dotreach has user.roles.0 data.json           exit 0 if present, 1 if not
+dotreach set user.age 36 -i data.json         edit the file in place
+dotreach delete user.roles.-1 data.json
+dotreach glob 'users.*.email' data.json
+dotreach flatten data.json | dotreach unflatten --create-lists
+curl -s https://example.com/api | dotreach get items.0.id
+```
+
+Input is a file or standard input; output is JSON on stdout; errors go to stderr with
+exit code 1. Run `dotreach --help` for every option.
 
 ## Why
 
-Reaching into JSON-shaped data by a single string path is a common need, but the
-existing options all ask for a compromise:
+Reaching into JSON-shaped data by a single string path is a common need. The existing
+options, as published on PyPI:
 
-- `glom` is powerful but heavy: it pulls in `boltons`, `attrs` and `face`, and its
-  spec language is far more than a dotted lookup.
-- `python-benedict` wraps every dict and drags a large dependency tree (slugify,
-  requests, and more under its extras) for what is often a one-line need.
-- `dpath` is dependency-free but path-oriented in a clunky way: slash-and-glob
-  paths and a search-style API rather than a plain `get(obj, "a.b.0.c", default)`.
-- `dotty_dict` and `scalpl` take the wrapper-object route and have not shipped a
-  release since 2022 and 2021 respectively.
+- `glom` is powerful but heavier than a lookup: it depends on `boltons`, `attrs` and
+  `face`, and its spec language goes far beyond dotted paths.
+- `python-benedict` wraps dicts in its own class and depends on `python-slugify` and
+  `typing_extensions`, with many more packages behind its extras.
+- `dpath` is dependency-free and has globbing, but uses slash-separated paths and a
+  search-oriented API rather than a plain `get(obj, "a.b.0.c", default)`.
+- `dotty_dict` and `scalpl` take the wrapper-object route; their latest releases
+  date from 2022 and 2021.
 
-`dotreach` is the small, maintained middle: four plain functions, full type hints
-checked under `mypy --strict`, ships `py.typed`, no runtime dependencies, and one
-unambiguous rule for how a segment is read. Reach for it when you want dotted-path
-access to nested data and nothing else.
+`dotreach` is the small middle: plain functions over your own dicts and lists, full type
+hints checked under `mypy --strict`, `py.typed`, no runtime dependencies, one
+unambiguous rule for how a segment is read, and a CLI for the same operations.
 
 ## License
 
