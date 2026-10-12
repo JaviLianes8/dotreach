@@ -9,7 +9,8 @@ All notable changes to this project are documented here. The format follows
 ## [0.2.0]
 
 Everything is additive: the 0.1 functions keep their signatures and behaviour, and
-every new error subclasses the built-in exception 0.1 raised.
+every new error subclasses the built-in exception 0.1 raised. The one visible
+difference is the text of a not-found error, listed under Changed.
 
 ### Added
 
@@ -27,6 +28,12 @@ every new error subclasses the built-in exception 0.1 raised.
 - The `dotreach` command: get, has, set, delete, glob, flatten and unflatten over JSON
   from a file or standard input.
 - `GUIDE.md` with the full rules.
+
+### Changed
+
+- `str()` of a not-found error is now a readable message such as
+  `path 'a.b' not found: no 'b' (segment 1) in dict` instead of the quoted path.
+  `args[0]` is still the path, so code that reads `error.args[0]` is unaffected.
 
 ### Fixed
 

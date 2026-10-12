@@ -66,8 +66,8 @@ dotreach.glob({"users": [{"name": "Ada"}, {"name": "Lin"}]}, "users.*.name")
 # {"users.0.name": "Ada", "users.1.name": "Lin"}
 ```
 
-`walk` and `leaves` iterate every leaf path lazily. Every error is a typed
-`DotreachError` naming the path, the failing segment and its position, and each one
+`walk` and `leaves` iterate every leaf path lazily. Path errors are typed
+`DotreachError`s naming the path, the failing segment and its position, and each one
 also subclasses the built-in error the 0.1 release raised (`KeyError`, `TypeError`,
 `IndexError`, `ValueError`), so existing `except` clauses keep working.
 

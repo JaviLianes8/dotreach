@@ -25,9 +25,11 @@ segment that is not `str`/`int` (`bool` is rejected on purpose).
 
 ### Escaping
 
-With `escape=True`, a backslash before the separator makes it literal and `\\` is a
-literal backslash; any other backslash stays as is. `join_path` and `split_path`
-apply the same rule and are inverses of each other:
+With `escape=True`, a backslash before any character of the separator, or before
+another backslash, makes that character literal; any other backslash stays as is.
+`join_path` and `split_path` apply the same rule and are exact inverses for any
+non-empty list of segments, multi-character separators included (`join_path([])`
+raises `InvalidPathError`, since an empty path is not a path):
 
 ```python
 get({"report.pdf": 1}, r"report\.pdf", escape=True)   # 1
@@ -70,9 +72,15 @@ returns the existing value, or sets and returns `default`.
 `set_copy` and `delete_copy` take the same arguments as `set` and `delete` and return
 a new root. Only the containers along the path are copied; every other branch is
 shared with the original. Because nothing is written in place they also work through
-tuples (rebuilt; named tuples keep their type) and read-only mappings (returned as a
-`dict`). Dict and list subclasses keep their type via `copy.copy`. `delete_copy` with
-`missing_ok=True` returns the original object when the path is absent.
+tuples (rebuilt; a named tuple keeps its type unless its length changes, then it
+becomes a plain tuple) and read-only mappings (returned as a `dict`). Dict and list
+subclasses keep their type via `copy.copy`. `delete_copy` with `missing_ok=True`
+returns the original object when the path is absent.
+
+Where `set` and `set_copy` differ: `set_copy` can enter a tuple on the path and
+rebuild it, where `set` replaces a tuple held in a dict with a new dict. And
+`set_copy` replaces any non-container value on the path with a new dict, including
+one inside a list, where `set` raises `PathTypeError`.
 
 ## Iterating and reshaping
 
@@ -87,16 +95,22 @@ tuples (rebuilt; named tuples keep their type) and read-only mappings (returned 
   integer segments build lists and must arrive in order, as `flatten` produces them.
 
 A leaf is any non-container value plus every empty container, so
-`unflatten(flatten(x, escape=True), escape=True, create_lists=True) == x` for JSON
-data with string keys. A structure that contains itself raises `ValueError`; shared
-subtrees are fine.
+`unflatten(flatten(x, escape=True), escape=True)` rebuilds any dict whose keys are
+non-empty strings, with lists coming back as dicts keyed `"0"`, `"1"`, and so on.
+With `create_lists=True` lists come back as lists, provided no dict in `x` has
+digit-only keys (those would turn into lists too). `unflatten` always returns a dict,
+so a list root does not round-trip, and an empty key cannot (an empty path is
+invalid). Empty containers in the input are copied, never shared with the result.
+A structure that contains itself raises `ValueError`; shared subtrees are fine.
 
 ## Wildcards
 
 `glob(obj, pattern)` returns `{concrete_path: value}` for every match. A `*` segment
 matches any one key or index; `**` matches zero or more levels, so `"**"` alone lists
 the root (as `""`) and every node. Other segments match as in `get`; a negative index
-is reported as its positive position.
+is reported as its positive position. If two different matches render to the same
+string (a key that contains the separator), `glob` raises `ValueError` like `flatten`;
+`escape=True` keeps them apart.
 
 ## Errors
 
@@ -127,5 +141,6 @@ Every command also takes `--sep`, `--escape` and `--indent N` (0 for compact). `
 defaults to standard input. `VALUE` is parsed as JSON when it is valid JSON and taken
 as a string otherwise; `--string` forces a string. `-i` writes the result back to
 `FILE`. Errors print `dotreach: <message>` on stderr and exit 1; `has` exits 1 when
-the path is absent. A path that starts with `-` goes after `--`:
+the path is absent, so check stderr to tell an absent path from an unreadable file.
+A path that starts with `-` goes after `--`:
 `dotreach get -- -1 data.json`.
