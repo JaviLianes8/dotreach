@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Iterator, Mapping
 from typing import Any, TypeVar
 
@@ -93,14 +94,16 @@ def unflatten(
     """Build a nested dict from a mapping of paths to values; the inverse of :func:`flatten`.
 
     With ``create_lists=True`` integer segments build lists (indices must arrive in
-    order, as :func:`flatten` produces them); otherwise every level is a dict.
+    order, as :func:`flatten` produces them); otherwise every level is a dict. The
+    result is always a dict, so a list root or a digit-only key under
+    ``create_lists`` does not come back as it went into :func:`flatten`.
 
     Raises:
         PathTypeError: Two paths conflict, such as ``"a"`` holding a value and
             ``"a.b"`` needing ``"a"`` to be a container.
     """
     result: dict[str, Any] = {}
-    placed: list[int] = []
+    placed: set[int] = set()
     for path, value in flat.items():
         segments = to_segments(path, sep, escape)
         node: Any = result
@@ -113,8 +116,10 @@ def unflatten(
             if not resolved:
                 break
             node = child
+        if is_container(value) and len(value) == 0:
+            value = copy.copy(value)  # never hand the caller's empty container back
         _set(result, segments, value, create_lists=create_lists)
-        placed.append(id(value))
+        placed.add(id(value))
     return result
 
 
@@ -125,16 +130,25 @@ def glob(obj: Any, pattern: PathLike, *, sep: str = ".", escape: bool = False) -
     Other segments match exactly, as in :func:`get`. Results keep traversal order and
     negative indices are reported as their positive position.
 
+    Raises:
+        ValueError: Two different matches render to the same string path (a key that
+            contains the separator; pass ``escape=True``), or the structure contains
+            itself.
+
     >>> glob({"users": [{"name": "Ada"}, {"name": "Lin"}]}, "users.*.name")
     {'users.0.name': 'Ada', 'users.1.name': 'Lin'}
     """
     patterns = to_segments(pattern, sep, escape)
     found: dict[str, Any] = {}
+    origin: dict[str, tuple[Key, ...]] = {}
     stack: list[int] = []
 
     def match(node: Any, index: int, prefix: tuple[Key, ...]) -> None:
         if index == len(patterns):
-            found.setdefault(render(prefix, sep, escape), node)
+            text = render(prefix, sep, escape)
+            if origin.setdefault(text, prefix) != prefix:
+                raise ValueError(f"two matches render to the same path {text!r}; try escape=True")
+            found.setdefault(text, node)
             return
         segment = patterns[index]
         if segment in ("*", "**"):

@@ -112,11 +112,15 @@ def _parse(parser: argparse.ArgumentParser, argv: Sequence[str] | None) -> argpa
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line interface and return its exit code.
 
-    Returns ``0`` on success, ``1`` on any error (message on stderr) and ``1`` from
-    ``has`` when the path is absent.
+    Returns ``0`` on success, ``1`` on any runtime error (message on stderr) and ``1``
+    from ``has`` when the path is absent. Usage errors print to stderr and raise
+    ``SystemExit(1)``; ``--help`` and ``--version`` raise ``SystemExit(0)``. When run
+    as the installed script (``argv`` is ``None``) stdout and stderr are switched to
+    UTF-8 so JSON with non-ASCII text prints on any console.
     """
     args = _parse(_build_parser(), argv)
-    for stream in (sys.stdout, sys.stderr):
+    streams = (sys.stdout, sys.stderr) if argv is None else ()
+    for stream in streams:
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:
             reconfigure(encoding="utf-8")

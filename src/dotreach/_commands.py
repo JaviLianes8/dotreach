@@ -52,8 +52,6 @@ def _value(text: str, as_string: bool) -> Any:
 def _emit(args: argparse.Namespace, document: Any) -> int:
     output = _dump(document, args.indent)
     if getattr(args, "in_place", False):
-        if args.file == "-":
-            raise CliError("--in-place needs a FILE, not stdin")
         Path(args.file).write_text(output + "\n", encoding="utf-8")
         return 0
     print(output)
@@ -80,6 +78,8 @@ def _unflatten(args: argparse.Namespace, data: Any, opts: dict[str, Any]) -> int
 
 def run(args: argparse.Namespace) -> int:
     """Execute the parsed subcommand and return its exit code."""
+    if getattr(args, "in_place", False) and args.file == "-":
+        raise CliError("--in-place needs a FILE, not stdin")
     data = _load(args.file)
     opts: dict[str, Any] = {"sep": args.sep, "escape": args.escape}
     command = args.command

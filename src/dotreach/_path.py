@@ -18,26 +18,25 @@ _ESC = "\\"
 
 
 def split_path(path: str, sep: str = ".") -> list[str]:
-    """Split ``path`` on ``sep``, honouring backslash escapes.
+    r"""Split ``path`` on ``sep``, honouring backslash escapes.
 
-    ``\\<sep>`` yields a literal separator inside a segment and ``\\\\`` a literal
-    backslash; any other backslash is kept as is. ``split_path(join_path(s)) == s``
-    for any list of string segments.
+    A backslash before any character of ``sep``, or before another backslash, makes
+    that character literal, so ``\.`` is a dot inside a key and ``\\`` a
+    backslash. Any other backslash is kept as is. ``split_path(join_path(s, sep), sep)
+    == s`` for any non-empty list of string segments.
 
-    >>> split_path(r"files.report\\.pdf.size")
+    >>> split_path(r"files.report\.pdf.size")
     ['files', 'report.pdf', 'size']
     """
     if not sep:
         raise InvalidPathError("sep must not be empty", path)
+    special = sep + _ESC
     segments: list[str] = []
     current: list[str] = []
     i, n = 0, len(path)
     while i < n:
-        if path.startswith(_ESC + sep, i):
-            current.append(sep)
-            i += 1 + len(sep)
-        elif path.startswith(_ESC + _ESC, i):
-            current.append(_ESC)
+        if path[i] == _ESC and i + 1 < n and path[i + 1] in special:
+            current.append(path[i + 1])
             i += 2
         elif path.startswith(sep, i):
             segments.append("".join(current))
@@ -51,19 +50,24 @@ def split_path(path: str, sep: str = ".") -> list[str]:
 
 
 def join_path(segments: Sequence[str | int], sep: str = ".") -> str:
-    """Join segments into a string path, escaping backslashes and separators.
+    r"""Join segments into a string path, escaping backslashes and separator characters.
 
-    The inverse of :func:`split_path`. Integer segments are written in decimal.
+    The inverse of :func:`split_path`. Integer segments are written in decimal. Every
+    character of ``sep`` inside a segment is escaped, so multi-character separators
+    round-trip too.
+
+    Raises:
+        InvalidPathError: ``segments`` is empty or ``sep`` is empty.
 
     >>> join_path(["files", "report.pdf", "size"])
-    'files.report\\\\.pdf.size'
+    'files.report\\.pdf.size'
     """
     if not sep:
         raise InvalidPathError("sep must not be empty", list(segments))
-    parts = []
-    for segment in segments:
-        text = str(segment).replace(_ESC, _ESC + _ESC)
-        parts.append(text.replace(sep, _ESC + sep))
+    if not segments:
+        raise InvalidPathError("cannot join an empty list of segments", list(segments))
+    special = set(sep + _ESC)
+    parts = ["".join(_ESC + ch if ch in special else ch for ch in str(s)) for s in segments]
     return sep.join(parts)
 
 
@@ -88,7 +92,9 @@ def to_segments(path: PathLike, sep: str = ".", escape: bool = False) -> list[Ke
 
 
 def render(segments: Sequence[Key], sep: str, escape: bool) -> str:
-    """Render concrete segments as a string path."""
+    """Render concrete segments as a string path (the root renders as ``""``)."""
+    if not segments:
+        return ""
     return join_path(segments, sep) if escape else sep.join(str(s) for s in segments)
 
 

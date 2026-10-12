@@ -37,7 +37,9 @@ def _shallow_with(node: Any, key: Any, value: Any, *, remove: bool = False) -> A
     else:
         elements[key] = value
     make = getattr(type(node), "_make", None)
-    return make(elements) if make is not None else tuple(elements)
+    if make is not None and len(elements) == len(node):
+        return make(elements)
+    return tuple(elements)  # a named tuple whose length changes becomes a plain tuple
 
 
 def _key_for(
@@ -90,8 +92,11 @@ def set_copy(
     Only the containers along the path are copied (structural sharing); everything
     else is shared with the original. Unlike :func:`set`, this works on immutable
     structures too: tuples and read-only mappings on the path are rebuilt rather than
-    replaced. Named tuples keep their type; read-only mappings come back as dicts.
-    Missing intermediates and ``create_lists`` behave as in :func:`set`.
+    replaced. Named tuples keep their type unless their length changes; read-only
+    mappings come back as dicts. Missing intermediates and ``create_lists`` behave as
+    in :func:`set`, with one difference that follows from copying: any value on the
+    path that is not a container (including ``None`` inside a list) is replaced by a
+    new dict, where :func:`set` raises ``PathTypeError`` inside a list.
     """
     segments = to_segments(path, sep, escape)
     return _set_in(obj, path, segments, 0, value, create_lists)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 
 class DotreachError(Exception):
@@ -29,6 +30,10 @@ class DotreachError(Exception):
 
     def __str__(self) -> str:
         return self.message
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # Keep errors picklable and copyable (process pools, copy.copy).
+        return (type(self), (self.message, self.path, self.segment, self.position))
 
 
 class PathNotFoundError(DotreachError, KeyError):

@@ -124,14 +124,19 @@ def _remove(obj: Any, path: PathLike, sep: str, escape: bool) -> tuple[Any, Exce
         return None, error
     last = segments[-1]
     if isinstance(container, MutableMapping) and last in container:
-        return container.pop(last), None
+        value = container[last]
+        del container[last]
+        return value, None
     if isinstance(container, MutableSequence):
         index = as_index(last)
         if index is not None:
             try:
-                return container.pop(index), None
+                value = container[index]
             except IndexError:
                 pass
+            else:
+                del container[index]
+                return value, None
     return None, not_found(path, segments, len(segments) - 1, container)
 
 
