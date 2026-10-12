@@ -1,144 +1,115 @@
-"""Read and mutate nested dicts and lists by a dotted path."""
+"""Read nested dicts and lists by a dotted path."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, MutableMapping, MutableSequence, Sequence
-from typing import Any
+from typing import Any, TypeVar, overload
 
-_MISSING: Any = object()
+from ._errors import PathNotFoundError, PathTypeError
+from ._path import MISSING, Key, PathLike, step, to_segments, type_name
 
+T = TypeVar("T")
+D = TypeVar("D")
 
-def _segments(path: str, sep: str) -> list[str]:
-    if not path:
-        raise ValueError("path must not be empty")
-    return path.split(sep)
-
-
-def _as_index(segment: str) -> int | None:
-    """Return the integer index a segment denotes, or None if it is not one."""
-    digits = segment[1:] if segment.startswith("-") else segment
-    return int(segment) if digits.isdigit() else None
+_MISSING: Any = MISSING
 
 
-def _is_readable_sequence(value: Any) -> bool:
-    return isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
+def not_found(path: PathLike, segments: list[Key], position: int, at: Any) -> PathNotFoundError:
+    """Build the error for a path that stops resolving at ``position``."""
+    segment = segments[position]
+    message = f"path {path!r} not found: no {segment!r} (segment {position}) in {type_name(at)}"
+    return PathNotFoundError(message, path, segment, position)
 
 
-def _is_descendable(value: Any) -> bool:
-    return isinstance(value, (MutableMapping, MutableSequence))
+def resolve(
+    obj: Any, path: PathLike, sep: str, escape: bool
+) -> tuple[Any, PathNotFoundError | None]:
+    """Walk the whole path; return ``(value, None)`` or ``(None, error)``."""
+    segments = to_segments(path, sep, escape)
+    current = obj
+    for position, segment in enumerate(segments):
+        parent = current
+        resolved, current = step(current, segment)
+        if not resolved:
+            return None, not_found(path, segments, position, parent)
+    return current, None
 
 
-def _step(container: Any, segment: str) -> tuple[bool, Any]:
-    """Advance one segment into a container, reporting whether it resolved."""
-    if isinstance(container, Mapping):
-        if segment in container:
-            return True, container[segment]
-        return False, None
-    if _is_readable_sequence(container):
-        index = _as_index(segment)
-        if index is None:
-            return False, None
-        try:
-            return True, container[index]
-        except IndexError:
-            return False, None
-    return False, None
-
-
-def get(obj: Any, path: str, default: Any = _MISSING, *, sep: str = ".") -> Any:
+def get(
+    obj: Any, path: PathLike, default: Any = _MISSING, *, sep: str = ".", escape: bool = False
+) -> Any:
     """Return the value at ``path``, or ``default`` if the path does not resolve.
 
-    Mapping segments are used as keys; sequence segments as integer indices
-    (negative allowed). With no ``default``, a missing path raises ``KeyError``.
+    Args:
+        obj: The root mapping or sequence.
+        path: A dotted string (``"a.b.0"``) or a sequence of segments (``("a", "b", 0)``).
+            Mapping segments are keys; sequence segments are integer indices, negative
+            allowed. Strings and bytes are never indexed into.
+        default: Returned when the path does not resolve. Omit it to raise instead.
+        sep: The separator for string paths.
+        escape: When true, ``\\.`` in a string path is a literal separator inside a key.
+
+    Raises:
+        PathNotFoundError: The path does not resolve and no ``default`` was given. It
+            subclasses ``KeyError`` and names the failing segment and its position.
+        InvalidPathError: The path is empty or malformed (a ``ValueError``).
+
+    >>> get({"user": {"roles": ["admin", "editor"]}}, "user.roles.-1")
+    'editor'
     """
-    current = obj
-    for segment in _segments(path, sep):
-        resolved, current = _step(current, segment)
-        if not resolved:
-            if default is _MISSING:
-                raise KeyError(path)
-            return default
-    return current
+    value, error = resolve(obj, path, sep, escape)
+    if error is None:
+        return value
+    if default is _MISSING:
+        raise error
+    return default
 
 
-def has(obj: Any, path: str, *, sep: str = ".") -> bool:
-    """Return whether ``path`` resolves to a value in ``obj``."""
-    current = obj
-    for segment in _segments(path, sep):
-        resolved, current = _step(current, segment)
-        if not resolved:
-            return False
-    return True
+def has(obj: Any, path: PathLike, *, sep: str = ".", escape: bool = False) -> bool:
+    """Return whether ``path`` resolves to a value in ``obj`` (``None`` counts as a value).
 
-
-def _descend_for_set(container: Any, segment: str) -> Any:
-    if isinstance(container, MutableMapping):
-        nxt = container.get(segment, _MISSING)
-        if not _is_descendable(nxt):
-            nxt = {}
-            container[segment] = nxt
-        return nxt
-    if isinstance(container, MutableSequence):
-        index = _as_index(segment)
-        if index is None:
-            raise TypeError(f"list index must be an integer, got {segment!r}")
-        return container[index]
-    raise TypeError(f"cannot descend into {type(container).__name__} at {segment!r}")
-
-
-def _assign(container: Any, segment: str, value: Any) -> None:
-    if isinstance(container, MutableMapping):
-        container[segment] = value
-        return
-    if isinstance(container, MutableSequence):
-        index = _as_index(segment)
-        if index is None:
-            raise TypeError(f"list index must be an integer, got {segment!r}")
-        container[index] = value
-        return
-    raise TypeError(f"cannot set {segment!r} on {type(container).__name__}")
-
-
-def set(obj: Any, path: str, value: Any, *, sep: str = ".") -> Any:
-    """Set ``value`` at ``path`` and return ``obj``.
-
-    Missing intermediate mapping keys are created as dicts. Sequence elements
-    must already exist: an out-of-range index raises ``IndexError``.
+    >>> has({"a": {"b": None}}, "a.b")
+    True
     """
-    segments = _segments(path, sep)
-    current = obj
-    for segment in segments[:-1]:
-        current = _descend_for_set(current, segment)
-    _assign(current, segments[-1], value)
-    return obj
+    return resolve(obj, path, sep, escape)[1] is None
 
 
-def delete(obj: Any, path: str, *, sep: str = ".", missing_ok: bool = False) -> Any:
-    """Remove the value at ``path`` and return ``obj``.
+@overload
+def get_as(
+    obj: Any, path: PathLike, type_: type[T], *, sep: str = ..., escape: bool = ...
+) -> T: ...
 
-    A missing path raises ``KeyError`` unless ``missing_ok`` is true.
+
+@overload
+def get_as(
+    obj: Any, path: PathLike, type_: type[T], default: D, *, sep: str = ..., escape: bool = ...
+) -> T | D: ...
+
+
+def get_as(
+    obj: Any,
+    path: PathLike,
+    type_: type[Any],
+    default: Any = _MISSING,
+    *,
+    sep: str = ".",
+    escape: bool = False,
+) -> Any:
+    """Return the value at ``path`` checked against ``type_``, typed for the checker.
+
+    A missing path returns ``default`` when given and raises ``PathNotFoundError``
+    otherwise. A value of the wrong type always raises ``PathTypeError``, even when a
+    default is given: a wrong type is a data error, not an absence. ``bool`` is not
+    accepted where ``int`` or ``float`` is asked for, although it subclasses ``int``.
+
+    >>> port: int = get_as({"server": {"port": 8080}}, "server.port", int)
     """
-    segments = _segments(path, sep)
-    current = obj
-    for segment in segments[:-1]:
-        resolved, current = _step(current, segment)
-        if not resolved:
-            if missing_ok:
-                return obj
-            raise KeyError(path)
-    last = segments[-1]
-    if isinstance(current, MutableMapping) and last in current:
-        del current[last]
-        return obj
-    if isinstance(current, MutableSequence):
-        index = _as_index(last)
-        if index is not None:
-            try:
-                del current[index]
-            except IndexError:
-                pass
-            else:
-                return obj
-    if missing_ok:
-        return obj
-    raise KeyError(path)
+    value, error = resolve(obj, path, sep, escape)
+    if error is not None:
+        if default is _MISSING:
+            raise error
+        return default
+    wrong_bool = isinstance(value, bool) and type_ in (int, float)
+    if wrong_bool or not isinstance(value, type_):
+        message = f"path {path!r} holds {type_name(value)}, expected {type_.__name__}"
+        raise PathTypeError(message, path)
+    return value
