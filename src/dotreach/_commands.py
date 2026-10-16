@@ -8,6 +8,7 @@ import errno
 import json
 import math
 import os
+import stat
 import sys
 import tempfile
 from pathlib import Path
@@ -34,6 +35,8 @@ def _out(text: str) -> None:
     try:
         print(text)
         sys.stdout.flush()
+    except UnicodeEncodeError:
+        raise CliError("the result holds text that is not valid Unicode") from None
     except OSError as error:
         if error.errno in (errno.EPIPE, errno.EINVAL):
             raise PipeClosed from None
@@ -101,15 +104,21 @@ def _value(text: str, as_string: bool) -> Any:
 
 
 def _replace(path: Path, text: str) -> None:
-    # Write a sibling file, then swap it in, so a failure never leaves FILE half written.
+    # Write a sibling of the real file (symlinks followed), give it the file's mode, then
+    # swap it in, so a failure never leaves FILE half written.
     data = text.encode("utf-8")
-    handle, temp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    target = Path(os.path.realpath(path))
+    mode = stat.S_IMODE(os.stat(target).st_mode) if target.exists() else None
+    handle, temp = tempfile.mkstemp(dir=target.parent, prefix=f".{target.name}.", suffix=".tmp")
     try:
         with os.fdopen(handle, "wb") as stream:
             stream.write(data)
-        os.replace(temp, path)
+        if mode is not None:
+            os.chmod(temp, mode)
+        os.replace(temp, target)
     except BaseException:
         with contextlib.suppress(OSError):
+            os.chmod(temp, stat.S_IREAD | stat.S_IWRITE)
             os.unlink(temp)
         raise
 
@@ -119,8 +128,6 @@ def _emit(args: argparse.Namespace, document: Any) -> int:
     if getattr(args, "in_place", False):
         _replace(Path(args.file), output + "\n")
         return 0
-    _out(output)
-    return 0
     _out(output)
     return 0
 

@@ -174,7 +174,10 @@ compact). `FILE` defaults to standard input. Input must be strict JSON: `NaN`,
 output is always strict JSON too. `VALUE` is parsed the same way when it is valid
 JSON and taken as a string otherwise (so `NaN` becomes the string `"NaN"`);
 `--string` forces a string. `-i` writes the result to a temporary file next to
-`FILE` and then replaces `FILE` with it, so a failure leaves `FILE` as it was. Errors print `dotreach: <message>` on stderr and exit 1,
+`FILE` and then replaces `FILE` with it, so a failure leaves `FILE` as it was. A
+symlink is followed and the file it points to is replaced; the file keeps its
+permission bits. What a replace cannot keep: other hard links to `FILE` still show
+the old content, and the new file belongs to the user who ran the command. Errors print `dotreach: <message>` on stderr and exit 1,
 input nested too deeply for Python's JSON reader included; `has` exits 1 when the path
 is absent, so check stderr to tell an absent path from an unreadable file. A reader
 that closes the output early (`| head`) ends the command quietly with exit 1. A path
