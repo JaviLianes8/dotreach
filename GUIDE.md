@@ -51,8 +51,8 @@ Escaping is off by default so that paths written for 0.1 keep their meaning.
 
 RFC 6901 pointers map onto sequence paths: decode `~1` and `~0` in each token and
 pass the tokens as a tuple. The test suite checks every example of the RFC this way.
-The differences: dotreach also accepts leading zeros, negative indices and non-ASCII
-decimal digits in indices, and it has no path for the whole document (an empty path is
+The differences: dotreach also accepts leading zeros, negative indices (`-0` is
+index 0) and non-ASCII decimal digits in indices, and it has no path for the whole document (an empty path is
 invalid).
 
 ## Reading
@@ -113,7 +113,8 @@ original object when the path is absent.
   `PathTypeError` when two paths conflict (`"a"` and `"a.b"`). With `create_lists`,
   integer segments build lists and must arrive in order, as `flatten` produces them.
 
-A leaf is any non-container value plus every empty container, so
+A leaf is any non-container value plus every empty container; a root that is not a
+container has no paths, so `walk(5)` yields nothing and `flatten(5)` is `{}`. So
 `unflatten(flatten(x, escape=True), escape=True)` rebuilds any dict whose keys are
 non-empty strings, with lists coming back as dicts keyed `"0"`, `"1"`, and so on.
 With `create_lists=True` lists come back as lists, provided no dict in `x` has

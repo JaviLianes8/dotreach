@@ -41,8 +41,6 @@ def test_get_agrees_with_glom_on_exact_paths() -> None:
         for segments in _paths(tree, rng):
             mine = d.get(tree, segments, MISS)
             parent = d.get(tree, segments[:-1], MISS) if len(segments) > 1 else tree
-            if isinstance(parent, str):
-                continue  # glom indexes into strings; dotreach never does (documented)
             last = segments[-1]
             if isinstance(parent, list) and isinstance(last, str) and not _decimal(last):
                 assert mine is MISS  # glom also takes " 0", "+1" and "1_0" (documented)

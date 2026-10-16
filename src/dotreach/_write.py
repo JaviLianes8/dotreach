@@ -47,7 +47,7 @@ def _slot(path: PathLike, segments: list[Key], position: int, node: Any, lists: 
     segment = segments[position]
     if isinstance(node, MutableMapping):
         return segment
-    if isinstance(node, MutableSequence):
+    if isinstance(node, MutableSequence) and is_mutable(node):
         index = _index_or_raise(path, segment, position)
         if lists and index == len(node):
             return index

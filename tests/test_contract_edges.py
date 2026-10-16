@@ -107,5 +107,16 @@ def test_glob_reports_each_path_once_in_depth_first_order() -> None:
     assert list(d.glob(data, "**")) == ["", "a", "a.b", "a.b.c", "d", "d.0", "d.0.c"]
 
 
+def test_bytearray_is_a_value_for_every_function() -> None:
+    data = {"a": bytearray(b"xy")}
+    assert d.get(data, "a.0", None) is None and not d.has(data, "a.0")
+    assert d.set({"a": bytearray(b"xy")}, "a.0", 65) == {"a": {"0": 65}}
+    assert d.set_copy(data, "a.0", 65) == {"a": {"0": 65}}
+    assert d.set({"a": bytearray(b"xy")}, "a.0.b", 1) == {"a": {"0": {"b": 1}}}
+    with pytest.raises(d.PathTypeError):
+        d.set(bytearray(b"xy"), "0", 65)
+    assert list(d.walk(data)) == [(("a",), bytearray(b"xy"))]
+
+
 def test_unflatten_keeps_int_keys_from_sequence_paths() -> None:
     assert d.unflatten({(1, "a"): 2}) == {1: {"a": 2}}

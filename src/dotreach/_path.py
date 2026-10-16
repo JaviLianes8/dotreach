@@ -147,8 +147,10 @@ def is_container(value: Any) -> bool:
 
 
 def is_mutable(value: Any) -> bool:
-    """Whether ``value`` is a container that can be written in place."""
-    return isinstance(value, (MutableMapping, MutableSequence))
+    """Whether ``value`` is a container that can be written in place (never bytearray)."""
+    return isinstance(value, MutableMapping) or (
+        isinstance(value, MutableSequence) and is_sequence(value)
+    )
 
 
 def step(container: Any, segment: Key) -> tuple[bool, Any]:
