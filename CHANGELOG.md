@@ -29,8 +29,8 @@ release, so everything here is new since 0.1.0.
 - `walk`, `leaves`, `flatten`, `unflatten` and `glob` (`*` and `**` wildcards). None
   of them recurse, so any nesting depth works; `glob` tries each node once per
   pattern position, so repeated `**` cannot blow up.
-- The `dotreach` command: get, has, set, delete, glob, flatten and unflatten over JSON
-  from a file or standard input.
+- The `dotreach` command: get, has, set, delete, glob, flatten and unflatten over strict
+  JSON from a file or standard input; `-i` replaces the file atomically.
 - `GUIDE.md` with the full rules, including how RFC 6901 pointers map onto paths.
 
 ### Changed

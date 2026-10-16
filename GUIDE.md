@@ -26,8 +26,9 @@ segment that is not `str`/`int` (`bool` is rejected on purpose). The type aliase
   the end. Text with a `+`, spaces, underscores or a decimal point is not an index,
   even though Python's `int()` would accept some of it. A number too large for any
   sequence is simply out of range.
-- Anything else (numbers, strings, `None`) cannot be entered: the path does not
-  resolve there.
+- Anything else (numbers, text, `None`) cannot be entered: the path does not
+  resolve there. Text means `str`, `bytes`, `bytearray` and `collections.UserString`:
+  they are sequences to Python, but dotreach treats them as single values everywhere.
 
 ### Escaping
 
@@ -168,9 +169,12 @@ dotreach unflatten [FILE] [--create-lists]
 ```
 
 Every command also takes `--sep`, `--escape` and `--indent N` (0 to 64, 0 for
-compact). `FILE` defaults to standard input. `VALUE` is parsed as JSON when it is
-valid JSON and taken as a string otherwise; `--string` forces a string. `-i` writes
-the result back to `FILE`. Errors print `dotreach: <message>` on stderr and exit 1,
+compact). `FILE` defaults to standard input. Input must be strict JSON: `NaN`,
+`Infinity` and numbers too large for a float (such as `1e999`) are refused, and the
+output is always strict JSON too. `VALUE` is parsed the same way when it is valid
+JSON and taken as a string otherwise (so `NaN` becomes the string `"NaN"`);
+`--string` forces a string. `-i` writes the result to a temporary file next to
+`FILE` and then replaces `FILE` with it, so a failure leaves `FILE` as it was. Errors print `dotreach: <message>` on stderr and exit 1,
 input nested too deeply for Python's JSON reader included; `has` exits 1 when the path
 is absent, so check stderr to tell an absent path from an unreadable file. A reader
 that closes the output early (`| head`) ends the command quietly with exit 1. A path
