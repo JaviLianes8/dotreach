@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import os
 import sys
 from collections.abc import Sequence
 from typing import NoReturn
@@ -38,13 +40,19 @@ class _Parser(argparse.ArgumentParser):
         self.exit(1, f"{self.prog}: error: {message}\n")
 
 
+def _indent(text: str) -> int:
+    if not text.isdecimal() or not 0 <= int(text) <= 64:
+        raise argparse.ArgumentTypeError(f"must be a whole number from 0 to 64, got {text!r}")
+    return int(text)
+
+
 def _common(sub: argparse.ArgumentParser, *, writes: bool = False) -> None:
     sub.add_argument("file", nargs="?", default="-", help="JSON file to read (default: stdin)")
     sub.add_argument("--sep", default=".", help="path separator (default: '.')")
     sub.add_argument(
         "--escape", action="store_true", help="treat '\\.' in a path as a literal separator"
     )
-    sub.add_argument("--indent", type=int, default=2, help="JSON indent, 0 for compact")
+    sub.add_argument("--indent", type=_indent, default=2, help="JSON indent, 0 for compact")
     if writes:
         sub.add_argument(
             "-i", "--in-place", action="store_true", help="write the result back to FILE"
@@ -113,7 +121,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line interface and return its exit code.
 
     Returns ``0`` on success, ``1`` on any runtime error (message on stderr) and ``1``
-    from ``has`` when the path is absent. Usage errors print to stderr and raise
+    from ``has`` when the path is absent. A closed output pipe (``| head``) ends
+    quietly with ``1``. Usage errors print to stderr and raise
     ``SystemExit(1)``; ``--help`` and ``--version`` raise ``SystemExit(0)``. When run
     as the installed script (``argv`` is ``None``) stdout and stderr are switched to
     UTF-8 so JSON with non-ASCII text prints on any console.
@@ -126,6 +135,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             reconfigure(encoding="utf-8")
     try:
         return run(args)
+    except BrokenPipeError:
+        # The reader went away: point stdout at devnull so the exit flush stays quiet,
+        # as the Python documentation on SIGPIPE advises.
+        with contextlib.suppress(OSError, ValueError):
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        return 1
     except (CliError, DotreachError, ValueError, OSError) as error:
         print(f"dotreach: {error}", file=sys.stderr)
         return 1

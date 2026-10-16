@@ -24,6 +24,7 @@ PUBLIC_API: list[str] = [
     "PathLike",
     "PathNotFoundError",
     "PathTypeError",
+    "StructureError",
     "delete",
     "delete_copy",
     "flatten",

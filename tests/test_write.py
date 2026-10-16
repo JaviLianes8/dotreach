@@ -29,16 +29,18 @@ def test_set_without_create_lists_keeps_dict_behaviour() -> None:
     assert d.set({}, "a.0", 1) == {"a": {"0": 1}}
 
 
-def test_set_replaces_a_tuple_value_in_a_dict_with_a_dict() -> None:
+def test_set_refuses_to_replace_a_read_only_container() -> None:
     data: dict[str, Any] = {"a": (1, 2)}
-    d.set(data, "a.b", 1)
-    assert data == {"a": {"b": 1}}
-
-
-def test_set_cannot_descend_through_a_scalar_in_a_list() -> None:
     with pytest.raises(d.PathTypeError) as info:
-        d.set({"a": [1]}, "a.0.b", 2)
-    assert info.value.position == 2
+        d.set(data, "a.b", 1)
+    assert data == {"a": (1, 2)} and (info.value.segment, info.value.position) == ("b", 1)
+    assert d.set_copy(data, "a.0", 9) == {"a": (9, 2)}
+
+
+def test_set_replaces_a_scalar_in_a_list_like_one_in_a_dict() -> None:
+    assert d.set({"a": [1]}, "a.0.b", 2) == {"a": [{"b": 2}]}
+    assert d.set({"a": 1}, "a.b", 2) == {"a": {"b": 2}}
+    assert d.set({"a": [None]}, "a.0.0", 2, create_lists=True) == {"a": [[2]]}
 
 
 def test_set_intermediate_list_index_out_of_range() -> None:
@@ -68,11 +70,15 @@ def test_delete_negative_index_and_missing_paths() -> None:
         assert d.delete(data, path, missing_ok=True) is data
 
 
-def test_delete_on_read_only_mapping_is_not_found() -> None:
+def test_delete_from_a_read_only_container_is_a_type_error() -> None:
     from types import MappingProxyType
 
-    with pytest.raises(KeyError):
-        d.delete({"a": MappingProxyType({"b": 1})}, "a.b")
+    for data, path in (({"a": MappingProxyType({"b": 1})}, "a.b"), ({"t": (1, 2)}, "t.0")):
+        with pytest.raises(d.PathTypeError):
+            d.delete(data, path, missing_ok=True)
+        with pytest.raises(d.PathTypeError):
+            d.pop(data, path, None)
+    assert d.delete({"t": (1, 2)}, "t.5", missing_ok=True) == {"t": (1, 2)}
 
 
 def test_pop_without_default_raises() -> None:

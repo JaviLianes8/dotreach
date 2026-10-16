@@ -4,17 +4,20 @@ from __future__ import annotations
 
 from ._copy import delete_copy, set_copy
 from ._core import get, get_as, has
+from ._delete import delete, pop
 from ._errors import (
     DotreachError,
     InvalidPathError,
     PathIndexError,
     PathNotFoundError,
     PathTypeError,
+    StructureError,
 )
+from ._glob import glob
 from ._path import Key, PathLike, join_path, split_path
 from ._version import __version__ as __version__
-from ._walk import flatten, glob, leaves, unflatten, walk
-from ._write import delete, pop, set, setdefault
+from ._walk import flatten, leaves, unflatten, walk
+from ._write import set, setdefault
 
 __all__ = [
     "DotreachError",
@@ -24,6 +27,7 @@ __all__ = [
     "PathLike",
     "PathNotFoundError",
     "PathTypeError",
+    "StructureError",
     "delete",
     "delete_copy",
     "flatten",
@@ -41,3 +45,15 @@ __all__ = [
     "unflatten",
     "walk",
 ]
+
+# Show and pickle the public errors under the package name, not their private module.
+for _error in (
+    DotreachError,
+    InvalidPathError,
+    PathIndexError,
+    PathNotFoundError,
+    PathTypeError,
+    StructureError,
+):
+    _error.__module__ = __name__
+del _error

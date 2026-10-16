@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from ._core import get, has
-from ._walk import flatten, glob, unflatten
-from ._write import delete
+from ._delete import delete
+from ._glob import glob
+from ._walk import flatten, unflatten
 from ._write import set as set_value
 
 
@@ -29,15 +30,20 @@ def _load(source: str) -> Any:
         raise CliError(f"cannot read {source}: {error.strerror or error}") from None
     except UnicodeDecodeError:
         raise CliError(f"{source} is not UTF-8 text") from None
+    name = "stdin" if source == "-" else source
     try:
         return json.loads(text)
     except json.JSONDecodeError as error:
-        name = "stdin" if source == "-" else source
         raise CliError(f"{name} is not valid JSON: {error}") from None
+    except RecursionError:
+        raise CliError(f"{name} is nested too deeply to read") from None
 
 
 def _dump(value: Any, indent: int) -> str:
-    return json.dumps(value, indent=indent or None, ensure_ascii=False)
+    try:
+        return json.dumps(value, indent=indent or None, ensure_ascii=False)
+    except RecursionError:
+        raise CliError("the result is nested too deeply to write") from None
 
 
 def _value(text: str, as_string: bool) -> Any:
