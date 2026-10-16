@@ -151,6 +151,9 @@ All share the base `DotreachError` with `.path`, `.segment` and `.position` (the
 zero-based segment index) where known. Messages quote paths and keys cut to a short
 length, so huge input never floods a log; the attributes keep them whole.
 `PathNotFoundError.args[0]` is the path, as the bare `KeyError(path)` of 0.1 was.
+Errors raised by your own containers are passed through unchanged: a `dict` subclass
+that refuses a deletion, or an `array.array` that refuses a value of the wrong type,
+raises its own exception, not a `DotreachError`.
 
 ## Command line
 
