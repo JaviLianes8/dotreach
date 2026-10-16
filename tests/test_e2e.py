@@ -8,6 +8,7 @@ against real files and real standard input.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import venv
@@ -25,8 +26,8 @@ def _exe(env: Path, name: str) -> Path:
 
 
 @pytest.fixture(scope="module")
-def cli(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Build the wheel, install it into a fresh venv and return the script path."""
+def wheel(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Build the project into a wheel and return its path."""
     dist = tmp_path_factory.mktemp("dist")
     subprocess.run(
         [sys.executable, "-m", "pip", "wheel", "--no-deps", "-w", str(dist), str(ROOT)],
@@ -36,10 +37,16 @@ def cli(tmp_path_factory: pytest.TempPathFactory) -> Path:
     )
     wheels = list(dist.glob("dotreach-*.whl"))
     assert len(wheels) == 1, wheels
+    return wheels[0]
+
+
+@pytest.fixture(scope="module")
+def cli(tmp_path_factory: pytest.TempPathFactory, wheel: Path) -> Path:
+    """Install the wheel into a fresh venv and return the script path."""
     env = tmp_path_factory.mktemp("venv")
     venv.create(env, with_pip=True)
     subprocess.run(
-        [str(_exe(env, "python")), "-m", "pip", "install", "--no-index", str(wheels[0])],
+        [str(_exe(env, "python")), "-m", "pip", "install", "--no-index", str(wheel)],
         check=True,
         capture_output=True,
         timeout=600,
@@ -118,3 +125,30 @@ def test_installed_library_imports(cli: Path) -> None:
         timeout=60,
     )
     assert result.stdout.strip() == "{'a': 1, 'b': {'c': 2}}"
+
+
+@pytest.mark.skipif(
+    not os.environ.get("DOTREACH_E2E_PYPI"), reason="set DOTREACH_E2E_PYPI=1 to use the network"
+)
+def test_upgrade_from_the_pypi_release_in_place(
+    tmp_path_factory: pytest.TempPathFactory, wheel: Path
+) -> None:
+    env = tmp_path_factory.mktemp("upgrade")
+    venv.create(env, with_pip=True)
+    python = str(_exe(env, "python"))
+    pip = [python, "-m", "pip", "install", "-q", "--no-cache-dir", "--disable-pip-version-check"]
+    subprocess.run([*pip, "dotreach==0.1.0"], check=True, capture_output=True, timeout=600)
+    code = "import dotreach as d; print(d.__version__, d.get({'a': [1, 2]}, 'a.-1'))"
+    before = subprocess.run([python, "-c", code], capture_output=True, text=True, timeout=60)
+    assert before.stdout.split() == ["0.1.0", "2"]
+    subprocess.run([*pip, str(wheel)], check=True, capture_output=True, timeout=600)
+    after = subprocess.run([python, "-c", code], capture_output=True, text=True, timeout=60)
+    assert after.stdout.split() == ["1.0.0", "2"]
+    result = subprocess.run(
+        [str(_exe(env, "dotreach")), "get", "a.0"],
+        input='{"a": [7]}',
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert (result.returncode, result.stdout.strip()) == (0, "7")
