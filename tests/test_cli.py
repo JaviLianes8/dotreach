@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import io
 import json
 from pathlib import Path
@@ -31,6 +32,33 @@ def test_get_prints_json_and_raw(capsys: pytest.CaptureFixture[str], doc: Path) 
     assert run(capsys, "get", "user.name", "--raw", str(doc)) == (0, "Ada\n", "")
     code, out, _ = run(capsys, "get", "user.roles", "--indent", "0", str(doc))
     assert (code, out) == (0, '["admin", "editor"]\n')
+    raw = run(capsys, "get", "user.roles", "--raw", "--indent", "0", str(doc))
+    assert raw == (0, '["admin", "editor"]\n', "")  # --raw changes strings only
+
+
+@pytest.mark.parametrize("number", [errno.EPIPE, errno.EINVAL])
+def test_a_reader_that_went_away_ends_quietly(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, doc: Path, number: int
+) -> None:
+    class Closed(io.StringIO):
+        def write(self, text: str) -> int:
+            raise OSError(number, "closed")
+
+    monkeypatch.setattr("sys.stdout", Closed())
+    assert main(["flatten", str(doc)]) == 1
+    assert capsys.readouterr().err == ""
+
+
+def test_other_output_failures_are_reported(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, doc: Path
+) -> None:
+    class Full(io.StringIO):
+        def write(self, text: str) -> int:
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr("sys.stdout", Full())
+    assert main(["flatten", str(doc)]) == 1
+    assert "No space left" in capsys.readouterr().err
 
 
 def test_get_default_and_missing(capsys: pytest.CaptureFixture[str], doc: Path) -> None:

@@ -88,7 +88,8 @@ def test_huge_numbers_as_indices_are_simply_out_of_range() -> None:
     with pytest.raises(d.PathIndexError):
         d.set_copy([1], nines, 0)
     assert d.get(["x"], "0" * 5000 + "0") == "x"
-    assert d.get(["x", "y"], "-" + "0" * 5000 + "1") == "y"
+    assert d.get(["x", "y", "z"], "-" + "0" * 5000 + "1") == "z"
+    assert d.get(["x", "y", "z"], "0" * 5000 + "1") == "y"
 
 
 def test_error_messages_stay_short_for_huge_paths_and_keys() -> None:
