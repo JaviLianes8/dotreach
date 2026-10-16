@@ -10,7 +10,10 @@ _LIMIT = 60
 
 def shown(value: Any) -> str:
     """``repr(value)`` cut to a bounded length, so messages never echo huge input."""
-    text = repr(value)
+    try:
+        text = repr(value)
+    except (ValueError, RecursionError):  # an int past str()'s digit limit, deep nesting
+        return f"<{type(value).__name__} too large to show>"
     if len(text) <= _LIMIT:
         return text
     return f"{text[: _LIMIT - 20]}...{text[-12:]} ({len(text)} chars)"

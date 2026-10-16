@@ -12,10 +12,11 @@ A path is a ``PathLike``: a dotted string or a sequence of ``Key`` segments.
 from __future__ import annotations
 
 import unicodedata
+from collections import UserString
 from collections.abc import Mapping, MutableMapping, MutableSequence, Sequence
 from typing import Any, TypeAlias
 
-from ._errors import InvalidPathError, shown
+from ._errors import InvalidPathError, StructureError, shown
 
 Key: TypeAlias = str | int
 """One path segment: a mapping key, or an integer index into a sequence."""
@@ -24,6 +25,7 @@ PathLike: TypeAlias = str | Sequence[str | int]
 """A dotted string such as ``"a.b.0"`` or an explicit sequence such as ``("a", "b", 0)``."""
 
 MISSING: Any = object()
+_TEXT = (str, bytes, bytearray, UserString)
 _ESC = "\\"
 # int() refuses long digit strings (sys.set_int_max_str_digits, at least 640), and no
 # sequence is longer than sys.maxsize (19 digits), so longer numbers are out of range.
@@ -73,9 +75,16 @@ def split_path(path: str, sep: str = ".") -> list[str]:
     return segments
 
 
+def _text(segment: Any) -> str:
+    try:
+        return str(segment)
+    except ValueError:  # an int past str()'s digit limit
+        raise StructureError(f"a key is too large to write as text: {shown(segment)}") from None
+
+
 def _join(segments: Sequence[Any], sep: str) -> str:
     special = set(sep + _ESC)
-    parts = ["".join(_ESC + ch if ch in special else ch for ch in str(s)) for s in segments]
+    parts = ["".join(_ESC + ch if ch in special else ch for ch in _text(s)) for s in segments]
     return sep.join(parts)
 
 
@@ -119,7 +128,7 @@ def to_segments(path: PathLike, sep: str = ".", escape: bool = False) -> list[Ke
 def render(segments: Sequence[Any], sep: str, escape: bool) -> str:
     """Render concrete segments as a string path (the root renders as ``""``)."""
     check_sep(sep, escape)
-    return _join(segments, sep) if escape else sep.join(str(s) for s in segments)
+    return _join(segments, sep) if escape else sep.join(_text(s) for s in segments)
 
 
 def as_index(segment: Key) -> int | None:
@@ -137,8 +146,8 @@ def as_index(segment: Key) -> int | None:
 
 
 def is_sequence(value: Any) -> bool:
-    """Whether ``value`` is a sequence dotreach indexes into (never str or bytes)."""
-    return isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
+    """Whether ``value`` is a sequence dotreach indexes into (never text or bytes)."""
+    return isinstance(value, Sequence) and not isinstance(value, _TEXT)
 
 
 def is_container(value: Any) -> bool:

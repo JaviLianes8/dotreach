@@ -126,6 +126,7 @@ def get_as(
         return default
     wrong_bool = isinstance(value, bool) and type_ in (int, float)
     if wrong_bool or not isinstance(value, type_):
-        message = f"path {shown(path)} holds {type_name(value)}, expected {type_.__name__}"
+        expected = getattr(type_, "__name__", shown(type_))
+        message = f"path {shown(path)} holds {type_name(value)}, expected {expected}"
         raise PathTypeError(message, path)
     return value

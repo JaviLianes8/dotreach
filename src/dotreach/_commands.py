@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import errno
 import json
+import math
+import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
 from ._core import get, has
 from ._delete import delete
+from ._errors import shown
 from ._glob import glob
 from ._walk import flatten, unflatten
 from ._write import set as set_value
@@ -35,47 +40,87 @@ def _out(text: str) -> None:
         raise
 
 
+def _not_json(text: str) -> Any:
+    raise ValueError(f"{text} is not a JSON number")
+
+
+def _finite(text: str) -> float:
+    number = float(text)
+    if math.isinf(number):
+        raise ValueError(f"{shown(text)} is too large for a JSON number")
+    return number
+
+
+def _parse(text: str) -> Any:
+    """Strict JSON: no NaN or Infinity, and no number too large to keep as a float."""
+    return json.loads(text, parse_constant=_not_json, parse_float=_finite)
+
+
 def _load(source: str) -> Any:
+    name = "stdin" if source == "-" else source
     try:
         if source == "-":
+            if sys.stdin is None:
+                raise CliError("there is no standard input to read")
             raw = getattr(sys.stdin, "buffer", None)
             text = raw.read().decode("utf-8-sig") if raw is not None else sys.stdin.read()
         else:
             text = Path(source).read_text(encoding="utf-8-sig")
     except OSError as error:
-        raise CliError(f"cannot read {source}: {error.strerror or error}") from None
+        raise CliError(f"cannot read {name}: {error.strerror or error}") from None
     except UnicodeDecodeError:
-        raise CliError(f"{source} is not UTF-8 text") from None
-    name = "stdin" if source == "-" else source
+        raise CliError(f"{name} is not UTF-8 text") from None
     try:
-        return json.loads(text)
-    except json.JSONDecodeError as error:
-        raise CliError(f"{name} is not valid JSON: {error}") from None
+        return _parse(text)
     except RecursionError:
         raise CliError(f"{name} is nested too deeply to read") from None
+    except ValueError as error:
+        raise CliError(f"{name} is not valid JSON: {error}") from None
 
 
 def _dump(value: Any, indent: int) -> str:
     try:
-        return json.dumps(value, indent=indent or None, ensure_ascii=False)
+        text = json.dumps(value, indent=indent or None, ensure_ascii=False, allow_nan=False)
+        text.encode("utf-8")
     except RecursionError:
         raise CliError("the result is nested too deeply to write") from None
+    except UnicodeEncodeError:
+        raise CliError("the result holds text that is not valid Unicode") from None
+    except ValueError:
+        raise CliError("the result holds a number JSON cannot represent") from None
+    return text
 
 
 def _value(text: str, as_string: bool) -> Any:
     if as_string:
         return text
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
+        return _parse(text)
+    except (ValueError, RecursionError):
         return text
+
+
+def _replace(path: Path, text: str) -> None:
+    # Write a sibling file, then swap it in, so a failure never leaves FILE half written.
+    data = text.encode("utf-8")
+    handle, temp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(handle, "wb") as stream:
+            stream.write(data)
+        os.replace(temp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(temp)
+        raise
 
 
 def _emit(args: argparse.Namespace, document: Any) -> int:
     output = _dump(document, args.indent)
     if getattr(args, "in_place", False):
-        Path(args.file).write_text(output + "\n", encoding="utf-8")
+        _replace(Path(args.file), output + "\n")
         return 0
+    _out(output)
+    return 0
     _out(output)
     return 0
 

@@ -7,7 +7,7 @@ from collections.abc import Iterator, Mapping
 from typing import Any, TypeVar, overload
 
 from ._errors import PathTypeError, StructureError, shown
-from ._path import Key, PathLike, is_container, is_sequence, render, step, to_segments
+from ._path import Key, PathLike, is_container, is_mutable, is_sequence, render, step, to_segments
 from ._write import set as _set
 
 P = TypeVar("P", bound=PathLike)
@@ -146,7 +146,7 @@ def unflatten(
             if not resolved:
                 break
             node = child
-        if is_container(value) and len(value) == 0:
+        if is_mutable(value) and len(value) == 0:
             value = copy.copy(value)  # never hand the caller's empty container back
         _set(result, segments, value, create_lists=create_lists)
         placed.add(id(value))

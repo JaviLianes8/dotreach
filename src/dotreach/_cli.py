@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from typing import NoReturn
 
 from ._commands import CliError, PipeClosed, run
-from ._errors import DotreachError
+from ._errors import DotreachError, shown
 from ._version import __version__
 
 _EPILOG = """\
@@ -41,8 +41,8 @@ class _Parser(argparse.ArgumentParser):
 
 
 def _indent(text: str) -> int:
-    if not text.isdecimal() or not 0 <= int(text) <= 64:
-        raise argparse.ArgumentTypeError(f"must be a whole number from 0 to 64, got {text!r}")
+    if not (text.isascii() and text.isdecimal() and len(text) <= 2 and int(text) <= 64):
+        raise argparse.ArgumentTypeError(f"must be a whole number from 0 to 64, got {shown(text)}")
     return int(text)
 
 
