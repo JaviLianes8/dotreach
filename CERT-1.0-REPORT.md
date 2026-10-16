@@ -59,7 +59,7 @@ pickle as `dotreach.<Name>`; `unflatten` typed `dict[str, Any]` for string paths
   as the RFC says, and requires `get`, `has`, escaped string paths, `flatten` and `unflatten` to
   agree. Documented differences: leading zeros and negative indices accepted, no whole-document
   path.
-- glob 25.12.0 and jmespath 1.1.0 (installed in a throwaway venv, never dependencies) as
+- glom 25.12.0 and jmespath 1.1.0 (installed in a throwaway venv, never dependencies) as
   independent oracles in `tests/test_oracles.py`: 300 seeded random documents, over 2000 exact
   paths compared with `glom.Path`, plain string paths with `glom`'s own parser, every leaf and
   its negative-index form with jmespath, and over 500 one-level wildcards against jmespath
