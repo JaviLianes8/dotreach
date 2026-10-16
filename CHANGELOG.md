@@ -50,7 +50,8 @@ release, so everything here is new since 0.1.0.
 ### Fixed
 
 - A path segment made of non-decimal digit characters (such as a superscript) no
-  longer crashes with `ValueError` when it meets a list; it simply does not resolve.
+  longer crashes with `ValueError` when it meets a list: reads find nothing there and
+  writes raise `PathTypeError`, as for any other non-integer segment.
 - A segment of more digits than Python's `int()` accepts is out of range instead of
   crashing with `ValueError`.
 

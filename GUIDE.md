@@ -20,7 +20,9 @@ segment that is not `str`/`int` (`bool` is rejected on purpose). The type aliase
   produces string keys; use a sequence path to reach an `int` key.
 - On a **sequence** (list, tuple, any `Sequence` that is not `str`/`bytes`), the
   segment must be an integer: an `int`, or text made only of decimal digits with an
-  optional leading `-`, such as `"2"`, `"-1"` or `"02"`. Negative indices count from
+  optional leading `-`, such as `"2"`, `"-1"` or `"02"`. Decimal digits are those of
+  `str.isdecimal`, so other scripts' digits count too (`"١"`, Arabic-Indic one, is
+  `1`), as with Python's `int()`. Negative indices count from
   the end. Text with a `+`, spaces, underscores or a decimal point is not an index,
   even though Python's `int()` would accept some of it. A number too large for any
   sequence is simply out of range.
@@ -49,8 +51,9 @@ Escaping is off by default so that paths written for 0.1 keep their meaning.
 
 RFC 6901 pointers map onto sequence paths: decode `~1` and `~0` in each token and
 pass the tokens as a tuple. The test suite checks every example of the RFC this way.
-Two differences: dotreach also accepts leading zeros and negative indices, and it has
-no path for the whole document (an empty path is invalid).
+The differences: dotreach also accepts leading zeros, negative indices and non-ASCII
+decimal digits in indices, and it has no path for the whole document (an empty path is
+invalid).
 
 ## Reading
 
@@ -171,8 +174,16 @@ that starts with `-` goes after `--`: `dotreach get -- -1 data.json`.
 
 ## Upgrading from 0.1
 
-The four 0.1 functions keep their signatures, and every error they raise still
-subclasses the built-in exception 0.1 raised. What changed is listed in the
-[changelog](https://github.com/JaviLianes8/dotreach/blob/main/CHANGELOG.md): `set`
-now replaces a non-container value inside a list instead of raising, refuses to
-replace a tuple held in a dict, and the not-found message is readable text.
+The four 0.1 functions keep their signatures, and for JSON-shaped data (dicts, lists
+and scalars) their errors still subclass the built-in exception 0.1 raised. What
+changed is listed in the
+[changelog](https://github.com/JaviLianes8/dotreach/blob/main/CHANGELOG.md):
+
+- `set` replaces a non-container value inside a list instead of raising `TypeError`;
+- `set` raises `PathTypeError` instead of replacing a tuple or read-only mapping on
+  the path with a dict;
+- `delete` on a value held in a tuple or read-only mapping raises `PathTypeError` (a
+  `TypeError`, not a `KeyError`), even with `missing_ok=True`;
+- a segment of non-ASCII digits that `int()` cannot read, such as a superscript, no
+  longer escapes as a bare `ValueError`;
+- the not-found message is readable text (`args[0]` is still the path).

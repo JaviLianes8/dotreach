@@ -73,7 +73,8 @@ dotreach.glob({"users": [{"name": "Ada"}, {"name": "Lin"}]}, "users.*.name")
 `walk` and `leaves` iterate every leaf path lazily, at any depth. Errors are typed
 `DotreachError`s naming the path, the failing segment and its position, and each one
 also subclasses a built-in error (`KeyError`, `TypeError`, `IndexError`,
-`ValueError`), so the `except` clauses written for the 0.1 release keep working.
+`ValueError`). Code written for 0.1 keeps working except in the few cases the
+changelog lists, such as deleting from a tuple (now a `TypeError`, not a `KeyError`).
 
 See the [guide](https://github.com/JaviLianes8/dotreach/blob/main/GUIDE.md) for every
 function, option and rule, and the

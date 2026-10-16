@@ -80,11 +80,21 @@ def set_copy(
     Only the containers along the path are copied (structural sharing); everything
     else is shared with the original. Unlike :func:`set`, this works on immutable
     structures too: tuples and read-only mappings on the path are rebuilt rather than
-    replaced. Named tuples keep their type unless their length changes; read-only
-    mappings come back as dicts. Missing intermediates and ``create_lists`` behave as
-    in :func:`set`, with one difference that follows from copying: any value on the
-    path that is not a container (including ``None`` inside a list) is replaced by a
-    new dict, where :func:`set` raises ``PathTypeError`` inside a list.
+    refused. Named tuples keep their type unless their length changes; read-only
+    mappings come back as dicts. Missing intermediates, values that are not containers
+    and ``create_lists`` behave as in :func:`set`.
+
+    Raises:
+        PathTypeError: A non-integer segment meets a sequence, or the root is not a
+            container.
+        PathIndexError: A sequence index is out of range.
+        InvalidPathError: The path is empty or malformed.
+
+    >>> data = {"user": {"name": "Ada"}, "tags": ("a", "b")}
+    >>> set_copy(data, "tags.0", "z")
+    {'user': {'name': 'Ada'}, 'tags': ('z', 'b')}
+    >>> set_copy(data, "user.name", "Lin")["user"] is data["user"], data["user"]
+    (False, {'name': 'Ada'})
     """
     segments = to_segments(path, sep, escape)
     nodes: list[tuple[Any, Any]] = []
@@ -126,7 +136,14 @@ def delete_copy(
     """Return a copy of ``obj`` without the value at ``path``; ``obj`` is never modified.
 
     A missing path raises ``PathNotFoundError`` unless ``missing_ok`` is true, in
-    which case ``obj`` itself is returned unchanged. Copies only the path's containers.
+    which case ``obj`` itself is returned unchanged. Copies only the path's containers,
+    so tuples and read-only mappings on the path work too.
+
+    >>> data = {"a": (1, 2, 3), "b": {"c": 1}}
+    >>> delete_copy(data, "a.-1"), data["a"]
+    ({'a': (1, 2), 'b': {'c': 1}}, (1, 2, 3))
+    >>> delete_copy(data, "x.y", missing_ok=True) is data
+    True
     """
     segments = to_segments(path, sep, escape)
     try:
