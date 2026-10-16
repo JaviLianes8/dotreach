@@ -118,5 +118,43 @@ def test_bytearray_is_a_value_for_every_function() -> None:
     assert list(d.walk(data)) == [(("a",), bytearray(b"xy"))]
 
 
+def test_bytearray_and_bytes_are_never_entered_by_copies_deletes_or_globs() -> None:
+    for blob in (bytearray(b"xy"), b"xy"):
+        data = {"a": blob}
+        with pytest.raises(d.PathTypeError):
+            d.set_copy(blob, "0", 65)
+        assert d.delete(data, "a.0", missing_ok=True) is data and data["a"] == blob
+        with pytest.raises(d.PathNotFoundError):
+            d.delete({"a": blob}, "a.0")
+        with pytest.raises(d.PathNotFoundError):
+            d.delete_copy(data, "a.0")
+        assert d.delete_copy(data, "a.0", missing_ok=True) is data
+        assert d.glob(data, "a.*") == {} and d.get(data, "a.0", None) is None
+        assert d.pop(data, "a.0", "none") == "none"
+
+
+def test_bytes_like_paths_are_invalid() -> None:
+    for path in (b"a", bytearray(b"a")):
+        with pytest.raises(d.InvalidPathError):
+            d.get({97: 1, "a": 1}, path)
+
+
+def test_an_int_key_equal_to_the_dict_length_is_a_key_not_an_append() -> None:
+    assert d.set({1: "a"}, (1,), "b") == {1: "b"}
+    assert d.set_copy({1: "a"}, (1,), "b") == {1: "b"}
+    assert d.set({0: {}}, (0, 1), "b") == {0: {1: "b"}}
+
+
+def test_glob_reports_a_dict_key_that_looks_negative_as_written() -> None:
+    assert d.glob({"-1": 5}, "-1") == {"-1": 5}
+    assert d.glob({"x": {"-1": 5}}, "*.-1") == {"x.-1": 5}
+
+
+def test_writing_into_a_read_only_root_points_to_the_copy_functions() -> None:
+    for root in ((1,), MappingProxyType({"0": 1})):
+        with pytest.raises(d.PathTypeError, match=r"read-only .*set_copy"):
+            d.set(root, "0", 2)
+
+
 def test_unflatten_keeps_int_keys_from_sequence_paths() -> None:
     assert d.unflatten({(1, "a"): 2}) == {1: {"a": 2}}
