@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pickle
+from collections import UserList
 from collections.abc import Callable
 from types import MappingProxyType
 from typing import Any
@@ -154,6 +155,39 @@ def test_writing_into_a_read_only_root_points_to_the_copy_functions() -> None:
     for root in ((1,), MappingProxyType({"0": 1})):
         with pytest.raises(d.PathTypeError, match=r"read-only .*set_copy"):
             d.set(root, "0", 2)
+
+
+def test_any_mutable_sequence_is_a_list_and_any_mapping_a_dict() -> None:
+    data = {"a": UserList([1])}
+    assert d.set(data, "a.0", 9)["a"] == [9]
+    assert d.set(data, "a.1", 2, create_lists=True)["a"] == [9, 2]
+    copied = d.set_copy(data, "a.2", 3, create_lists=True)["a"]
+    assert type(copied) is UserList and copied == [9, 2, 3] and data["a"] == [9, 2]
+    assert list(d.walk(data)) == [(("a", 0), 9), (("a", 1), 2)]
+    assert d.glob(UserList([1]), "*") == {"0": 1}
+    assert d.delete_copy(data, "a.0")["a"] == [2] and d.pop(data, "a.-1") == 2
+
+
+def test_copies_rebuild_read_only_mappings_anywhere_on_the_path() -> None:
+    proxy = MappingProxyType({"a": {"b": 1}, "c": 2})
+    assert d.set_copy(proxy, "a.c", 2) == {"a": {"b": 1, "c": 2}, "c": 2}
+    assert d.set_copy({"p": proxy}, "p.c", 3) == {"p": {"a": {"b": 1}, "c": 3}}
+    assert d.delete_copy(proxy, "c") == {"a": {"b": 1}}
+    assert d.delete_copy({"p": proxy}, "p.a.b") == {"p": {"a": {}, "c": 2}}
+    assert d.glob(MappingProxyType({"-1": 5}), "-1") == {"-1": 5}
+
+
+def test_set_copy_builds_a_dict_for_a_negative_next_segment() -> None:
+    assert d.set_copy({}, "a.-1", 1, create_lists=True) == {"a": {"-1": 1}}
+    assert d.set_copy({}, "a.0", 1, create_lists=True) == {"a": [1]}
+
+
+def test_read_only_messages_name_the_container_type() -> None:
+    for root, name in (((1,), "tuple"), (MappingProxyType({}), "mappingproxy")):
+        with pytest.raises(d.PathTypeError, match=f"read-only {name} "):
+            d.set(root, "0", 2)
+    with pytest.raises(d.PathTypeError, match=r"read-only tuple .*delete_copy"):
+        d.delete({"t": (1,)}, "t.0")
 
 
 def test_unflatten_keeps_int_keys_from_sequence_paths() -> None:
