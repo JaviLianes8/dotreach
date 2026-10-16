@@ -1,0 +1,11 @@
+{
+  "rfc6901.txt": {
+    "title": "RFC 6901, JavaScript Object Notation (JSON) Pointer (April 2013)",
+    "url": "https://www.rfc-editor.org/rfc/rfc6901.txt",
+    "revision": "RFC 6901 as published by the RFC Editor",
+    "licence": "IETF Trust Legal Provisions, Simplified BSD for code components (https://trustee.ietf.org/license-info)",
+    "fetched": "2026-10-16",
+    "size": 13037,
+    "sha256": "12f9f4fc13d686aa4fbe7d144d70166cd3fcd4ab89174c2b13bda8f4b55e49da"
+  }
+}

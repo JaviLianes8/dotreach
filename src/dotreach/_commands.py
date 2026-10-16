@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import sys
 from pathlib import Path
@@ -17,6 +18,21 @@ from ._write import set as set_value
 
 class CliError(Exception):
     """A user-facing command line error."""
+
+
+class PipeClosed(Exception):
+    """Standard output was closed by its reader (``| head``)."""
+
+
+def _out(text: str) -> None:
+    # A reader that went away shows up as EPIPE, or as EINVAL on Windows pipes.
+    try:
+        print(text)
+        sys.stdout.flush()
+    except OSError as error:
+        if error.errno in (errno.EPIPE, errno.EINVAL):
+            raise PipeClosed from None
+        raise
 
 
 def _load(source: str) -> Any:
@@ -60,7 +76,7 @@ def _emit(args: argparse.Namespace, document: Any) -> int:
     if getattr(args, "in_place", False):
         Path(args.file).write_text(output + "\n", encoding="utf-8")
         return 0
-    print(output)
+    _out(output)
     return 0
 
 
@@ -70,9 +86,9 @@ def _get(args: argparse.Namespace, data: Any, opts: dict[str, Any]) -> int:
     else:
         value = get(data, args.path, **opts)
     if args.raw and isinstance(value, str):
-        print(value)
+        _out(value)
     else:
-        print(_dump(value, args.indent))
+        _out(_dump(value, args.indent))
     return 0
 
 
@@ -100,9 +116,9 @@ def run(args: argparse.Namespace) -> int:
     if command == "delete":
         return _emit(args, delete(data, args.path, missing_ok=args.missing_ok, **opts))
     if command == "glob":
-        print(_dump(glob(data, args.pattern, **opts), args.indent))
+        _out(_dump(glob(data, args.pattern, **opts), args.indent))
         return 0
     if command == "flatten":
-        print(_dump(flatten(data, **opts), args.indent))
+        _out(_dump(flatten(data, **opts), args.indent))
         return 0
     return _unflatten(args, data, opts)

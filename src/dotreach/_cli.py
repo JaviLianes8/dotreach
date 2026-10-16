@@ -9,7 +9,7 @@ import sys
 from collections.abc import Sequence
 from typing import NoReturn
 
-from ._commands import CliError, run
+from ._commands import CliError, PipeClosed, run
 from ._errors import DotreachError
 from ._version import __version__
 
@@ -135,7 +135,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             reconfigure(encoding="utf-8")
     try:
         return run(args)
-    except BrokenPipeError:
+    except PipeClosed:
         # The reader went away: point stdout at devnull so the exit flush stays quiet,
         # as the Python documentation on SIGPIPE advises.
         with contextlib.suppress(OSError, ValueError):

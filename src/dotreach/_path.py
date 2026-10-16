@@ -31,6 +31,14 @@ _FAST_DIGITS = 600
 _HUGE = 10**30
 
 
+def check_sep(sep: str, escape: bool, path: Any = None) -> None:
+    """Refuse a separator that cannot work: empty, or holding the escape character."""
+    if not sep:
+        raise InvalidPathError("sep must not be empty", path)
+    if escape and _ESC in sep:
+        raise InvalidPathError("sep must not contain a backslash when escaping", path)
+
+
 def split_path(path: str, sep: str = ".") -> list[str]:
     r"""Split ``path`` on ``sep``, honouring backslash escapes.
 
@@ -40,13 +48,12 @@ def split_path(path: str, sep: str = ".") -> list[str]:
     == s`` for any non-empty list of string segments.
 
     Raises:
-        InvalidPathError: ``sep`` is empty.
+        InvalidPathError: ``sep`` is empty or contains a backslash.
 
     >>> split_path(r"files.report\.pdf.size")
     ['files', 'report.pdf', 'size']
     """
-    if not sep:
-        raise InvalidPathError("sep must not be empty", path)
+    check_sep(sep, True, path)
     special = sep + _ESC
     segments: list[str] = []
     current: list[str] = []
@@ -81,13 +88,12 @@ def join_path(segments: Sequence[str | int], sep: str = ".") -> str:
 
     Raises:
         InvalidPathError: ``segments`` is empty, holds something other than ``str`` or
-            ``int`` (``bool`` included), or ``sep`` is empty.
+            ``int`` (``bool`` included), or ``sep`` is empty or contains a backslash.
 
     >>> join_path(["files", "report.pdf", "size"])
     'files.report\\.pdf.size'
     """
-    if not sep:
-        raise InvalidPathError("sep must not be empty", list(segments))
+    check_sep(sep, True, list(segments))
     return _join(to_segments(list(segments)), sep)
 
 
@@ -96,8 +102,7 @@ def to_segments(path: PathLike, sep: str = ".", escape: bool = False) -> list[Ke
     if isinstance(path, str):
         if not path:
             raise InvalidPathError("path must not be empty", path)
-        if not sep:
-            raise InvalidPathError("sep must not be empty", path)
+        check_sep(sep, escape, path)
         return list(split_path(path, sep) if escape else path.split(sep))
     if isinstance(path, (bytes, bytearray)) or not isinstance(path, Sequence):
         raise InvalidPathError(f"path must be a string or a sequence, got {shown(path)}")
@@ -113,6 +118,7 @@ def to_segments(path: PathLike, sep: str = ".", escape: bool = False) -> list[Ke
 
 def render(segments: Sequence[Any], sep: str, escape: bool) -> str:
     """Render concrete segments as a string path (the root renders as ``""``)."""
+    check_sep(sep, escape)
     return _join(segments, sep) if escape else sep.join(str(s) for s in segments)
 
 
