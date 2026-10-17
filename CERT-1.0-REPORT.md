@@ -86,7 +86,7 @@ the command, a closed output pipe through a real subprocess.
 ## Packaging, e2e and Pythons (items 8, 10, 13, 14)
 
 - Wheel and sdist built from a clean clone at 154f05a: `twine check --strict` passes on both.
-  Wheel: the 12 modules, `py.typed`, LICENSE, entry point. Sdist: `src`, every test, the RFC
+  Wheel: the 13 modules (`__main__` added later), `py.typed`, LICENSE, entry point. Sdist: `src`, every test, the RFC
   manifest (not the RFC), the fetch script, README, GUIDE, CHANGELOG, CONTRIBUTING, LICENSE,
   `requirements-dev.txt`; no notes, reports or caches.
 - `tests/test_e2e.py` builds the wheel, installs it in a fresh venv and drives the installed

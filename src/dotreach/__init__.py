@@ -1,7 +1,5 @@
 """Typed, zero-dependency get/set/delete/has on nested dicts and lists by dotted path."""
 
-from __future__ import annotations
-
 from ._copy import delete_copy, set_copy
 from ._core import get, get_as, has
 from ._delete import delete, pop

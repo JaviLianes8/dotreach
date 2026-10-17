@@ -1,8 +1,8 @@
 # dotreach improvement round
 
-A ranked list of substantial, coherent improvements. Every item is additive: `get`,
-`set`, `delete` and `has` keep their signatures and behaviour, and every new error
-subclasses the built-in exception that 0.1 raised, so existing code keeps working.
+A ranked list of substantial, coherent improvements, written for the unreleased 0.2.0
+round. Every item was additive at the time; the 1.0.0 release later changed a few
+behaviours on purpose, listed in CHANGELOG.md.
 
 ## Starting point
 

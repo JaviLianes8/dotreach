@@ -124,7 +124,7 @@ def get_as(
         if default is _MISSING:
             raise error
         return default
-    wrong_bool = isinstance(value, bool) and type_ in (int, float)
+    wrong_bool = isinstance(value, bool) and type_ is int  # bool is never a float
     if wrong_bool or not isinstance(value, type_):
         expected = getattr(type_, "__name__", shown(type_))
         message = f"path {shown(path)} holds {type_name(value)}, expected {expected}"
