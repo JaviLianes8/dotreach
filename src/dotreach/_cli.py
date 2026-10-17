@@ -24,7 +24,7 @@ examples:
   dotreach set user.city Paris -i data.json     edit the file in place
   dotreach set tags.0 new --create-lists data.json
   dotreach delete user.roles.-1 data.json
-  dotreach glob 'user.*' data.json              every match, as {"path": value}
+  dotreach glob "user.*" data.json              every match, as {"path": value}
   dotreach flatten data.json                    {"user.name": "Ada", "user.roles.0": "admin"}
   dotreach flatten data.json | dotreach unflatten --create-lists
   curl -s https://example.com/api | dotreach get items.0.id
@@ -52,7 +52,7 @@ def _common(sub: argparse.ArgumentParser, *, writes: bool = False) -> None:
     sub.add_argument(
         "--escape", action="store_true", help="treat '\\.' in a path as a literal separator"
     )
-    sub.add_argument("--indent", type=_indent, default=2, help="JSON indent, 0 for compact")
+    sub.add_argument("--indent", type=_indent, default=2, help="JSON indent, 0 for one line")
     if writes:
         sub.add_argument(
             "-i", "--in-place", action="store_true", help="write the result back to FILE"

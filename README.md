@@ -91,7 +91,7 @@ dotreach get user.name --raw data.json        Ada
 dotreach has user.roles.0 data.json           exit 0 if present, 1 if not
 dotreach set user.age 36 -i data.json         edit the file in place
 dotreach delete user.roles.-1 data.json
-dotreach glob 'user.*' data.json
+dotreach glob "user.*" data.json
 dotreach flatten data.json | dotreach unflatten --create-lists
 curl -s https://example.com/api | dotreach get items.0.id
 ```
