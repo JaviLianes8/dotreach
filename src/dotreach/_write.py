@@ -5,15 +5,23 @@ from __future__ import annotations
 from collections.abc import MutableMapping, MutableSequence
 from typing import Any
 
-from ._core import _MISSING, not_found, resolve
-from ._errors import PathIndexError, PathTypeError
-from ._path import Key, PathLike, as_index, is_mutable, step, to_segments, type_name
+from ._core import resolve
+from ._errors import PathIndexError, PathTypeError, shown
+from ._path import (
+    Key,
+    PathLike,
+    as_index,
+    is_container,
+    is_mutable,
+    to_segments,
+    type_name,
+)
 
 
 def _index_or_raise(path: PathLike, segment: Key, position: int) -> int:
     index = as_index(segment)
     if index is None:
-        message = f"list index must be an integer, got {segment!r} (segment {position})"
+        message = f"list index must be an integer, got {shown(segment)} (segment {position})"
         raise PathTypeError(message, path, segment, position)
     return index
 
@@ -24,52 +32,39 @@ def _fresh(next_segment: Key, create_lists: bool) -> Any:
 
 
 def _out_of_range(path: PathLike, segment: Key, position: int, size: int) -> PathIndexError:
-    message = f"list index {segment!r} (segment {position}) out of range for length {size}"
-    return PathIndexError(message, path, segment, position)
+    where = f"(segment {position}) out of range for length {size}"
+    return PathIndexError(f"list index {shown(segment)} {where}", path, segment, position)
 
 
-def _descend(
-    path: PathLike, segments: list[Key], position: int, container: Any, create_lists: bool
-) -> Any:
+def read_only(path: PathLike, segment: Key, position: int, node: Any, verb: str) -> PathTypeError:
+    where = f"{shown(segment)} in read-only {type_name(node)} (segment {position})"
+    message = f"cannot {verb} {where}; use {verb}_copy"
+    return PathTypeError(message, path, segment, position)
+
+
+def _slot(path: PathLike, segments: list[Key], position: int, node: Any, lists: bool) -> Any:
+    """Return the key or index ``segments[position]`` writes in ``node``."""
     segment = segments[position]
-    if isinstance(container, MutableMapping):
-        nxt = container.get(segment, _MISSING)
-        if not is_mutable(nxt):
-            nxt = _fresh(segments[position + 1], create_lists)
-            container[segment] = nxt
-        return nxt
-    if isinstance(container, MutableSequence):
+    if isinstance(node, MutableMapping):
+        return segment
+    if isinstance(node, MutableSequence) and is_mutable(node):
         index = _index_or_raise(path, segment, position)
-        if create_lists and index == len(container):
-            nxt = _fresh(segments[position + 1], create_lists)
-            container.append(nxt)
-            return nxt
-        try:
-            return container[index]
-        except IndexError:
-            raise _out_of_range(path, segment, position, len(container)) from None
-    message = f"cannot descend into {type_name(container)} at {segment!r} (segment {position})"
+        if lists and index == len(node):
+            return index
+        if not -len(node) <= index < len(node):
+            raise _out_of_range(path, segment, position, len(node))
+        return index % len(node)
+    if is_container(node):
+        raise read_only(path, segment, position, node, "set")
+    message = f"cannot set {shown(segment)} on {type_name(node)} (segment {position})"
     raise PathTypeError(message, path, segment, position)
 
 
-def _assign(
-    path: PathLike, segment: Key, position: int, container: Any, value: Any, create_lists: bool
-) -> None:
-    if isinstance(container, MutableMapping):
-        container[segment] = value
-        return
-    if isinstance(container, MutableSequence):
-        index = _index_or_raise(path, segment, position)
-        if create_lists and index == len(container):
-            container.append(value)
-            return
-        try:
-            container[index] = value
-        except IndexError:
-            raise _out_of_range(path, segment, position, len(container)) from None
-        return
-    message = f"cannot set {segment!r} on {type_name(container)} (segment {position})"
-    raise PathTypeError(message, path, segment, position)
+def _put(node: Any, slot: Any, value: Any) -> None:
+    if isinstance(node, MutableSequence) and slot == len(node):
+        node.append(value)
+    else:
+        node[slot] = value
 
 
 def set(
@@ -83,90 +78,41 @@ def set(
 ) -> Any:
     """Set ``value`` at ``path`` in place and return ``obj``.
 
-    Missing intermediate keys, and intermediate values that are not mutable
-    containers, become new dicts. Existing sequence elements are replaced; by default
-    an out-of-range index raises ``PathIndexError`` (an ``IndexError``).
+    A missing intermediate, or one holding a value that is not a container (a number,
+    a string, ``None``), becomes a new dict, in a dict or in a list alike. Existing
+    sequence elements are replaced; an out-of-range index raises ``PathIndexError``.
+    A container that cannot be written in place (a tuple, a read-only mapping) is
+    never replaced: it raises ``PathTypeError`` (use :func:`set_copy` to rebuild it).
 
     With ``create_lists=True`` a missing intermediate becomes a list when the next
-    segment is a non-negative integer, and an index equal to the list length appends,
-    so ``set({}, "tags.0", "x", create_lists=True)`` gives ``{"tags": ["x"]}``.
+    segment is a non-negative integer, and an index equal to the list length appends.
 
     Raises:
         PathTypeError: A non-integer segment meets a list, or the path runs into a
-            value that cannot be written (a ``TypeError``).
+            read-only container or the root is not a container (a ``TypeError``).
         PathIndexError: A list index is out of range.
         InvalidPathError: The path is empty or malformed.
+
+    >>> set({"user": {"name": "Ada"}}, "user.age", 36)
+    {'user': {'name': 'Ada', 'age': 36}}
+    >>> set({}, "tags.0", "x", create_lists=True)
+    {'tags': ['x']}
     """
     segments = to_segments(path, sep, escape)
-    current = obj
-    for position in range(len(segments) - 1):
-        current = _descend(path, segments, position, current, create_lists)
+    node = obj
     last = len(segments) - 1
-    _assign(path, segments[last], last, current, value, create_lists)
+    for position in range(last):
+        slot = _slot(path, segments, position, node, create_lists)
+        resolved = slot in node if isinstance(node, MutableMapping) else slot < len(node)
+        child = node[slot] if resolved else None
+        if not is_mutable(child):
+            if is_container(child):
+                raise read_only(path, segments[position + 1], position + 1, child, "set")
+            child = _fresh(segments[position + 1], create_lists)
+            _put(node, slot, child)
+        node = child
+    _put(node, _slot(path, segments, last, node, create_lists), value)
     return obj
-
-
-def _parent(obj: Any, path: PathLike, segments: list[Key]) -> tuple[Any, Exception | None]:
-    current = obj
-    for position, segment in enumerate(segments[:-1]):
-        parent = current
-        resolved, current = step(current, segment)
-        if not resolved:
-            return None, not_found(path, segments, position, parent)
-    return current, None
-
-
-def _remove(obj: Any, path: PathLike, sep: str, escape: bool) -> tuple[Any, Exception | None]:
-    """Detach the value at ``path``; return ``(value, None)`` or ``(None, error)``."""
-    segments = to_segments(path, sep, escape)
-    container, error = _parent(obj, path, segments)
-    if error is not None:
-        return None, error
-    last = segments[-1]
-    if isinstance(container, MutableMapping) and last in container:
-        value = container[last]
-        del container[last]
-        return value, None
-    if isinstance(container, MutableSequence):
-        index = as_index(last)
-        if index is not None:
-            try:
-                value = container[index]
-            except IndexError:
-                pass
-            else:
-                del container[index]
-                return value, None
-    return None, not_found(path, segments, len(segments) - 1, container)
-
-
-def delete(
-    obj: Any, path: PathLike, *, sep: str = ".", missing_ok: bool = False, escape: bool = False
-) -> Any:
-    """Remove the value at ``path`` in place and return ``obj``.
-
-    A missing path raises ``PathNotFoundError`` (a ``KeyError``) unless
-    ``missing_ok`` is true. Removing a list element shifts the ones after it.
-    """
-    _, error = _remove(obj, path, sep, escape)
-    if error is not None and not missing_ok:
-        raise error
-    return obj
-
-
-def pop(
-    obj: Any, path: PathLike, default: Any = _MISSING, *, sep: str = ".", escape: bool = False
-) -> Any:
-    """Remove the value at ``path`` and return it, like ``dict.pop`` but nested.
-
-    A missing path returns ``default`` when given, else raises ``PathNotFoundError``.
-    """
-    value, error = _remove(obj, path, sep, escape)
-    if error is None:
-        return value
-    if default is _MISSING:
-        raise error
-    return default
 
 
 def setdefault(
@@ -181,6 +127,10 @@ def setdefault(
     """Return the value at ``path``, first setting it to ``default`` if it is missing.
 
     Like ``dict.setdefault`` but nested: intermediates are created as by :func:`set`.
+
+    >>> data = {"prefs": {"theme": "light"}}
+    >>> setdefault(data, "prefs.theme", "dark"), setdefault(data, "prefs.lang", "en")
+    ('light', 'en')
     """
     value, error = resolve(obj, path, sep, escape)
     if error is None:

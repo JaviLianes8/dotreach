@@ -1,59 +1,66 @@
-"""Iterate leaf paths, flatten and unflatten, and match wildcard patterns."""
+"""Iterate leaf paths, flatten and unflatten."""
 
 from __future__ import annotations
 
 import copy
 from collections.abc import Iterator, Mapping
-from typing import Any, TypeVar
+from typing import Any, TypeVar, overload
 
-from ._errors import PathTypeError
-from ._path import Key, PathLike, as_index, is_container, is_sequence, render, step, to_segments
+from ._errors import PathTypeError, StructureError, shown
+from ._path import Key, PathLike, is_container, is_mutable, is_sequence, render, step, to_segments
 from ._write import set as _set
 
 P = TypeVar("P", bound=PathLike)
 
 
-def _children(node: Any) -> Iterator[tuple[Key, Any]]:
+def children(node: Any) -> Iterator[tuple[Any, Any]]:
+    """Yield ``(key, child)`` for a mapping or an indexable sequence, else nothing."""
     if isinstance(node, Mapping):
         yield from node.items()
     elif is_sequence(node):
         yield from enumerate(node)
 
 
-def _enter(node: Any, stack: list[int]) -> None:
-    if id(node) in stack:
-        raise ValueError("cannot walk a structure that contains itself")
-    stack.append(id(node))
+def cycle_error() -> StructureError:
+    return StructureError("cannot walk a structure that contains itself")
 
 
 def walk(obj: Any) -> Iterator[tuple[tuple[Key, ...], Any]]:
     """Yield ``(segments, value)`` for every leaf, depth first, in container order.
 
-    Segments are exact keys and indices, so the result is lossless: each tuple can be
-    passed straight back to :func:`get`. A leaf is any value that is not a mapping or a
-    sequence, plus every *empty* mapping or sequence (so structure round-trips). A
-    non-container root has no paths and yields nothing.
+    Segments are exact keys and indices, so for str and int keys each tuple can be
+    passed straight back to :func:`get`; keys of other types are yielded as they are.
+    A leaf is any value that is not a mapping or a sequence, plus every *empty*
+    mapping or sequence (so structure round-trips). A non-container root yields
+    nothing. Iterative: any depth works, and shared subtrees are visited once per path.
 
     Raises:
-        ValueError: The structure contains itself.
+        StructureError: The structure contains itself (a ``ValueError``).
 
     >>> list(walk({"a": [1, {}]}))
     [(('a', 0), 1), (('a', 1), {})]
     """
-    stack: list[int] = []
-
-    def visit(node: Any, prefix: tuple[Key, ...]) -> Iterator[tuple[tuple[Key, ...], Any]]:
-        _enter(node, stack)
-        for key, child in _children(node):
-            path = (*prefix, key)
+    if not is_container(obj):
+        return
+    keys: list[Any] = []
+    active = {id(obj)}
+    stack = [(obj, children(obj))]
+    while stack:
+        node, pending = stack[-1]
+        for key, child in pending:
             if is_container(child) and len(child) > 0:
-                yield from visit(child, path)
-            else:
-                yield path, child
-        stack.pop()
-
-    if is_container(obj):
-        yield from visit(obj, ())
+                if id(child) in active:
+                    raise cycle_error()
+                active.add(id(child))
+                keys.append(key)
+                stack.append((child, children(child)))
+                break
+            yield (*keys, key), child
+        else:
+            stack.pop()
+            active.discard(id(node))
+            if keys:
+                keys.pop()
 
 
 def leaves(obj: Any, *, sep: str = ".", escape: bool = False) -> Iterator[tuple[str, Any]]:
@@ -73,36 +80,59 @@ def flatten(obj: Any, *, sep: str = ".", escape: bool = False) -> dict[str, Any]
     """Return a one-level dict mapping every leaf path to its value.
 
     Raises:
-        ValueError: Two leaves render to the same path, for example a key that
-            contains the separator; pass ``escape=True`` to keep them distinct.
+        StructureError: Two leaves render to the same path, for example a key that
+            contains the separator (pass ``escape=True`` to keep them distinct), or
+            the structure contains itself. A ``ValueError``.
+
+    >>> flatten({"db": {"host": "x", "ports": [5432]}})
+    {'db.host': 'x', 'db.ports.0': 5432}
     """
     flat: dict[str, Any] = {}
     for path, value in leaves(obj, sep=sep, escape=escape):
         if path in flat:
-            raise ValueError(f"two leaves flatten to the same path {path!r}; try escape=True")
+            message = f"two leaves flatten to the same path {shown(path)}; try escape=True"
+            raise StructureError(message, path)
         flat[path] = value
     return flat
 
 
+@overload
 def unflatten(
-    flat: Mapping[P, Any],
+    flat: Mapping[str, Any], *, sep: str = ..., escape: bool = ..., create_lists: bool = ...
+) -> dict[str, Any]: ...
+
+
+@overload
+def unflatten(
+    flat: Mapping[P, Any], *, sep: str = ..., escape: bool = ..., create_lists: bool = ...
+) -> dict[Any, Any]: ...
+
+
+def unflatten(
+    flat: Mapping[Any, Any],
     *,
     sep: str = ".",
     escape: bool = False,
     create_lists: bool = False,
-) -> dict[str, Any]:
+) -> dict[Any, Any]:
     """Build a nested dict from a mapping of paths to values; the inverse of :func:`flatten`.
 
     With ``create_lists=True`` integer segments build lists (indices must arrive in
     order, as :func:`flatten` produces them); otherwise every level is a dict. The
     result is always a dict, so a list root or a digit-only key under
-    ``create_lists`` does not come back as it went into :func:`flatten`.
+    ``create_lists`` does not come back as it went into :func:`flatten`. String paths
+    give a ``dict[str, Any]``; sequence paths may put ``int`` keys at the top.
 
     Raises:
         PathTypeError: Two paths conflict, such as ``"a"`` holding a value and
             ``"a.b"`` needing ``"a"`` to be a container.
+        PathIndexError: Under ``create_lists`` an index skips ahead of the list.
+        InvalidPathError: A path is empty or malformed.
+
+    >>> unflatten({"db.host": "x", "db.ports.0": 5432}, create_lists=True)
+    {'db': {'host': 'x', 'ports': [5432]}}
     """
-    result: dict[str, Any] = {}
+    result: dict[Any, Any] = {}
     placed: set[int] = set()
     for path, value in flat.items():
         segments = to_segments(path, sep, escape)
@@ -111,62 +141,13 @@ def unflatten(
             resolved, child = step(node, segment)
             last = position == len(segments) - 1
             if resolved and (last or not is_container(child) or id(child) in placed):
-                message = f"path {path!r} conflicts with an earlier path at {segment!r}"
+                message = f"path {shown(path)} conflicts with an earlier path at {shown(segment)}"
                 raise PathTypeError(message, path, segment, position)
             if not resolved:
                 break
             node = child
-        if is_container(value) and len(value) == 0:
+        if is_mutable(value) and len(value) == 0:
             value = copy.copy(value)  # never hand the caller's empty container back
         _set(result, segments, value, create_lists=create_lists)
         placed.add(id(value))
     return result
-
-
-def glob(obj: Any, pattern: PathLike, *, sep: str = ".", escape: bool = False) -> dict[str, Any]:
-    """Return every concrete path matching ``pattern`` mapped to its value.
-
-    A ``*`` segment matches any one key or index; ``**`` matches zero or more levels.
-    Other segments match exactly, as in :func:`get`. Results keep traversal order and
-    negative indices are reported as their positive position.
-
-    Raises:
-        ValueError: Two different matches render to the same string path (a key that
-            contains the separator; pass ``escape=True``), or the structure contains
-            itself.
-
-    >>> glob({"users": [{"name": "Ada"}, {"name": "Lin"}]}, "users.*.name")
-    {'users.0.name': 'Ada', 'users.1.name': 'Lin'}
-    """
-    patterns = to_segments(pattern, sep, escape)
-    found: dict[str, Any] = {}
-    origin: dict[str, tuple[Key, ...]] = {}
-    stack: list[int] = []
-
-    def match(node: Any, index: int, prefix: tuple[Key, ...]) -> None:
-        if index == len(patterns):
-            text = render(prefix, sep, escape)
-            if origin.setdefault(text, prefix) != prefix:
-                raise ValueError(f"two matches render to the same path {text!r}; try escape=True")
-            found.setdefault(text, node)
-            return
-        segment = patterns[index]
-        if segment in ("*", "**"):
-            if segment == "**":
-                match(node, index + 1, prefix)
-            if not is_container(node):
-                return
-            _enter(node, stack)
-            following = index if segment == "**" else index + 1
-            for key, child in _children(node):
-                match(child, following, (*prefix, key))
-            stack.pop()
-            return
-        resolved, child = step(node, segment)
-        if resolved:
-            position = as_index(segment) if is_sequence(node) else None
-            key = position % len(node) if position is not None else segment
-            match(child, index + 1, (*prefix, key))
-
-    match(obj, 0, ())
-    return found

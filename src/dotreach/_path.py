@@ -1,11 +1,22 @@
-"""Path parsing, escaping and the single-step resolution rule shared by every function."""
+r"""Path parsing, escaping and the single-step resolution rule shared by every function.
+
+A path is a ``PathLike``: a dotted string or a sequence of ``Key`` segments.
+
+>>> from dotreach import Key, PathLike, get
+>>> path: PathLike = ("files", "report.pdf", 0)
+>>> first: Key = path[0]
+>>> get({"files": {"report.pdf": ["v1"]}}, path)
+'v1'
+"""
 
 from __future__ import annotations
 
+import unicodedata
+from collections import UserString
 from collections.abc import Mapping, MutableMapping, MutableSequence, Sequence
 from typing import Any, TypeAlias
 
-from ._errors import InvalidPathError
+from ._errors import InvalidPathError, StructureError, shown
 
 Key: TypeAlias = str | int
 """One path segment: a mapping key, or an integer index into a sequence."""
@@ -14,7 +25,20 @@ PathLike: TypeAlias = str | Sequence[str | int]
 """A dotted string such as ``"a.b.0"`` or an explicit sequence such as ``("a", "b", 0)``."""
 
 MISSING: Any = object()
+_TEXT = (str, bytes, bytearray, UserString)
 _ESC = "\\"
+# int() refuses long digit strings (sys.set_int_max_str_digits, at least 640), and no
+# sequence is longer than sys.maxsize (19 digits), so longer numbers are out of range.
+_FAST_DIGITS = 600
+_HUGE = 10**30
+
+
+def check_sep(sep: str, escape: bool, path: Any = None) -> None:
+    """Refuse a separator that cannot work: empty, or holding the escape character."""
+    if not sep:
+        raise InvalidPathError("sep must not be empty", path)
+    if escape and _ESC in sep:
+        raise InvalidPathError("sep must not contain a backslash when escaping", path)
 
 
 def split_path(path: str, sep: str = ".") -> list[str]:
@@ -25,11 +49,13 @@ def split_path(path: str, sep: str = ".") -> list[str]:
     backslash. Any other backslash is kept as is. ``split_path(join_path(s, sep), sep)
     == s`` for any non-empty list of string segments.
 
+    Raises:
+        InvalidPathError: ``sep`` is empty or contains a backslash.
+
     >>> split_path(r"files.report\.pdf.size")
     ['files', 'report.pdf', 'size']
     """
-    if not sep:
-        raise InvalidPathError("sep must not be empty", path)
+    check_sep(sep, True, path)
     special = sep + _ESC
     segments: list[str] = []
     current: list[str] = []
@@ -49,6 +75,19 @@ def split_path(path: str, sep: str = ".") -> list[str]:
     return segments
 
 
+def _text(segment: Any) -> str:
+    try:
+        return str(segment)
+    except ValueError:  # an int past str()'s digit limit
+        raise StructureError(f"a key is too large to write as text: {shown(segment)}") from None
+
+
+def _join(segments: Sequence[Any], sep: str) -> str:
+    special = set(sep + _ESC)
+    parts = ["".join(_ESC + ch if ch in special else ch for ch in _text(s)) for s in segments]
+    return sep.join(parts)
+
+
 def join_path(segments: Sequence[str | int], sep: str = ".") -> str:
     r"""Join segments into a string path, escaping backslashes and separator characters.
 
@@ -57,18 +96,14 @@ def join_path(segments: Sequence[str | int], sep: str = ".") -> str:
     round-trip too.
 
     Raises:
-        InvalidPathError: ``segments`` is empty or ``sep`` is empty.
+        InvalidPathError: ``segments`` is empty, holds something other than ``str`` or
+            ``int`` (``bool`` included), or ``sep`` is empty or contains a backslash.
 
     >>> join_path(["files", "report.pdf", "size"])
     'files.report\\.pdf.size'
     """
-    if not sep:
-        raise InvalidPathError("sep must not be empty", list(segments))
-    if not segments:
-        raise InvalidPathError("cannot join an empty list of segments", list(segments))
-    special = set(sep + _ESC)
-    parts = ["".join(_ESC + ch if ch in special else ch for ch in str(s)) for s in segments]
-    return sep.join(parts)
+    check_sep(sep, True, list(segments))
+    return _join(to_segments(list(segments)), sep)
 
 
 def to_segments(path: PathLike, sep: str = ".", escape: bool = False) -> list[Key]:
@@ -76,26 +111,24 @@ def to_segments(path: PathLike, sep: str = ".", escape: bool = False) -> list[Ke
     if isinstance(path, str):
         if not path:
             raise InvalidPathError("path must not be empty", path)
-        if not sep:
-            raise InvalidPathError("sep must not be empty", path)
+        check_sep(sep, escape, path)
         return list(split_path(path, sep) if escape else path.split(sep))
     if isinstance(path, (bytes, bytearray)) or not isinstance(path, Sequence):
-        raise InvalidPathError(f"path must be a string or a sequence, got {path!r}")
+        raise InvalidPathError(f"path must be a string or a sequence, got {shown(path)}")
     segments = list(path)
     if not segments:
         raise InvalidPathError("path must not be empty", path)
     for position, segment in enumerate(segments):
         if isinstance(segment, bool) or not isinstance(segment, (str, int)):
-            message = f"segment {position} of {path!r} must be str or int, got {segment!r}"
+            message = f"segment {position} must be str or int, got {shown(segment)}"
             raise InvalidPathError(message, path, None, position)
     return segments
 
 
-def render(segments: Sequence[Key], sep: str, escape: bool) -> str:
+def render(segments: Sequence[Any], sep: str, escape: bool) -> str:
     """Render concrete segments as a string path (the root renders as ``""``)."""
-    if not segments:
-        return ""
-    return join_path(segments, sep) if escape else sep.join(str(s) for s in segments)
+    check_sep(sep, escape)
+    return _join(segments, sep) if escape else sep.join(_text(s) for s in segments)
 
 
 def as_index(segment: Key) -> int | None:
@@ -103,12 +136,18 @@ def as_index(segment: Key) -> int | None:
     if isinstance(segment, int):
         return None if isinstance(segment, bool) else segment
     digits = segment[1:] if segment.startswith("-") else segment
-    return int(segment) if digits.isdecimal() else None
+    if not digits.isdecimal():
+        return None
+    if len(digits) <= _FAST_DIGITS:
+        return int(segment)
+    plain = "".join(str(unicodedata.decimal(ch)) for ch in digits).lstrip("0")
+    value = int(plain or "0") if len(plain) <= _FAST_DIGITS else _HUGE
+    return -value if segment.startswith("-") else value
 
 
 def is_sequence(value: Any) -> bool:
-    """Whether ``value`` is a sequence dotreach indexes into (never str or bytes)."""
-    return isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
+    """Whether ``value`` is a sequence dotreach indexes into (never text or bytes)."""
+    return isinstance(value, Sequence) and not isinstance(value, _TEXT)
 
 
 def is_container(value: Any) -> bool:
@@ -117,8 +156,10 @@ def is_container(value: Any) -> bool:
 
 
 def is_mutable(value: Any) -> bool:
-    """Whether ``value`` is a container that can be written in place."""
-    return isinstance(value, (MutableMapping, MutableSequence))
+    """Whether ``value`` is a container that can be written in place (never bytearray)."""
+    return isinstance(value, MutableMapping) or (
+        isinstance(value, MutableSequence) and is_sequence(value)
+    )
 
 
 def step(container: Any, segment: Key) -> tuple[bool, Any]:

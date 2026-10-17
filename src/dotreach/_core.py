@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, TypeVar, overload
 
-from ._errors import PathNotFoundError, PathTypeError
+from ._errors import PathNotFoundError, PathTypeError, shown
 from ._path import MISSING, Key, PathLike, step, to_segments, type_name
 
 T = TypeVar("T")
@@ -16,7 +16,8 @@ _MISSING: Any = MISSING
 def not_found(path: PathLike, segments: list[Key], position: int, at: Any) -> PathNotFoundError:
     """Build the error for a path that stops resolving at ``position``."""
     segment = segments[position]
-    message = f"path {path!r} not found: no {segment!r} (segment {position}) in {type_name(at)}"
+    where = f"no {shown(segment)} (segment {position}) in {type_name(at)}"
+    message = f"path {shown(path)} not found: {where}"
     return PathNotFoundError(message, path, segment, position)
 
 
@@ -67,6 +68,10 @@ def get(
 def has(obj: Any, path: PathLike, *, sep: str = ".", escape: bool = False) -> bool:
     """Return whether ``path`` resolves to a value in ``obj`` (``None`` counts as a value).
 
+    Raises:
+        InvalidPathError: The path is empty or malformed; a malformed path is not
+            reported as absent.
+
     >>> has({"a": {"b": None}}, "a.b")
     True
     """
@@ -100,16 +105,28 @@ def get_as(
     otherwise. A value of the wrong type always raises ``PathTypeError``, even when a
     default is given: a wrong type is a data error, not an absence. ``bool`` is not
     accepted where ``int`` or ``float`` is asked for, although it subclasses ``int``.
+    ``type_`` must be a class: ``isinstance`` rejects a parameterised generic such as
+    ``list[int]`` with a plain ``TypeError``.
+
+    Raises:
+        PathNotFoundError: The path does not resolve and no ``default`` was given.
+        PathTypeError: The value is not an instance of ``type_``.
+        InvalidPathError: The path is empty or malformed.
 
     >>> port: int = get_as({"server": {"port": 8080}}, "server.port", int)
+    >>> port
+    8080
+    >>> get_as({}, "server.port", int, 80)
+    80
     """
     value, error = resolve(obj, path, sep, escape)
     if error is not None:
         if default is _MISSING:
             raise error
         return default
-    wrong_bool = isinstance(value, bool) and type_ in (int, float)
+    wrong_bool = isinstance(value, bool) and type_ is int  # bool is never a float
     if wrong_bool or not isinstance(value, type_):
-        message = f"path {path!r} holds {type_name(value)}, expected {type_.__name__}"
+        expected = getattr(type_, "__name__", shown(type_))
+        message = f"path {shown(path)} holds {type_name(value)}, expected {expected}"
         raise PathTypeError(message, path)
     return value
