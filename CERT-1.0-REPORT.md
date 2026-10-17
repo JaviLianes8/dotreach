@@ -15,7 +15,7 @@ Progress:
 - [x] Five QA lenses report PASS (item 19)
 - [x] Independent reviewer reports PASS (item 16)
 - [x] Gates (item 15), final run
-- [ ] PR and trace guard CLEAN (item 17); merge and publish left to the maintainer
+- [x] PR #3 and trace guard CLEAN (item 17); merge and publish left to the maintainer
 
 ## Scorecard
 
@@ -41,7 +41,7 @@ Independent review (item 16) at c613cb5: PASS on every item, minor findings fixe
 | 14 | sdist and wheel contents | PASS: 13-module wheel with `py.typed` and LICENSE; sdist with the full suite and docs, no notes, caches or fetched third-party text |
 | 15 | Gates each exit 0 | PASS: see Gates |
 | 16 | Independent reviewer | PASS at c613cb5 |
-| 17 | PR and trace guard | see the PR; merge and publish left to the maintainer |
+| 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 46, lens b 63 (two sweeps), lens c two sweeps (19 in round 3), lens e 116, reviewer spot check; every non-equivalent survivor killed by a contract |
 | 19 | Five independent QA lenses | PASS: a round 2, b round 4, c round 3, d round 1, e round 2 |
 
