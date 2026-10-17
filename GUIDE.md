@@ -168,7 +168,7 @@ dotreach flatten [FILE]
 dotreach unflatten [FILE] [--create-lists]
 ```
 
-Every command also takes `--sep`, `--escape` and `--indent N` (0 to 64, 0 for
+The command is also `python -m dotreach`. Every command also takes `--sep`, `--escape` and `--indent N` (0 to 64, 0 for
 one line). `FILE` defaults to standard input. Input must be strict JSON: `NaN`,
 `Infinity` and numbers too large for a float (such as `1e999`) are refused, and the
 output is always strict JSON too. `VALUE` is parsed the same way when it is valid
