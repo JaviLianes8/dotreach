@@ -157,7 +157,21 @@ M27 and M46 are argued equivalent.
 
 ## QA lenses (item 19)
 
-Pending.
+Independent reviews, one at a time, each reading the certification rules, running the code
+and reporting only to the maintainer. Later rounds confirm earlier findings and sweep at
+most 40 new mutants on the code changed since the previous round.
+
+| Lens | Round | Head | Verdict | Findings and outcome |
+| --- | --- | --- | --- | --- |
+| a. API and docs | 1 | 33e4c58 | FAIL | no examples on `set_copy`/`delete_copy`; `set_copy` docstring and the 0.1 compatibility claims in README/GUIDE out of date; CHANGELOG superscript entry; non-ASCII digits undocumented; fixed in 2a39efa |
+| a | 2 | 2a39efa | PASS | all five confirmed, 23 doctests, every README/GUIDE example rerun |
+| b. Correctness and ground truth | 1 | 2a39efa | FAIL | RFC 6901 refetched (sha256 matches), 2800 seeded documents and about 580,000 checks against its own oracle, glom and jmespath with 0 mismatches; `set` wrote into a `bytearray` the other functions treat as a value; RFC tests skipped by the local gate; one false glom note in a test; fixed in 5dac487 |
+| b | 2 | 5dac487 | FAIL | fixes confirmed; `check.ps1` ignored failing steps; 10 of 30 new mutants survived (bytes/bytearray, int keys equal to the dict length, glob of a `"-1"` key, read-only message); fixed in d3583b1 and 6c5a0cd |
+| b | 3 | 6c5a0cd | FAIL | fixes confirmed (gate stops at the first failing step under PowerShell 5 and 7); 9 of 33 new mutants survived (UserList, read-only mappings inside copies); contracts added in b982ea0 |
+| b | 4 | b982ea0 | PASS | all 33 round-3 mutants killed |
+| c. Adversarial and robustness | 1 | b982ea0 | FAIL | 4 seeds of 400k fuzz cases, n/2n/4n timing linear; `-i` emptied the file on an unencodable result; `UserString` hung walks; unprintable ints and deep path objects leaked `ValueError`/`RecursionError`; `unflatten` leaked `TypeError` on empty read-only values; NaN/Infinity accepted by the command; long `--indent` echoed; closed stdin traceback; fixed in ed941d8 and 1e60705 |
+| c | 2 | 1e60705 | FAIL | fixes confirmed; on POSIX `-i` reset the mode to 0600 and replaced symlinks; 9 mutant survivors; `get --raw` on a lone surrogate; fixed in d498f6b |
+| c | 3 | d498f6b | PASS (minor) | POSIX mode, symlinks and hard-link note confirmed in WSL; 19 new mutants, survivors M45, M48, M51, M52 and the raw `-i` error text closed in 224ac37 and confirmed killed on Windows and POSIX |
 
 ## Gates (item 15)
 
