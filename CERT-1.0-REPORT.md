@@ -12,7 +12,7 @@ Progress:
 - [x] Contract, fuzz and author mutation round (items 6, 9, 18)
 - [x] Docs: README, GUIDE, CHANGELOG (items 11, 12)
 - [x] Packaging, e2e and upgrade from PyPI 0.1.0, every Python (items 8, 10, 13, 14)
-- [ ] Five QA lenses report PASS (item 19)
+- [x] Five QA lenses report PASS (item 19)
 - [ ] Independent reviewer reports PASS (item 16)
 - [ ] Gates (item 15), final run
 - [ ] PR and trace guard CLEAN (item 17); merge and publish left to the maintainer
@@ -172,6 +172,9 @@ most 40 new mutants on the code changed since the previous round.
 | c. Adversarial and robustness | 1 | b982ea0 | FAIL | 4 seeds of 400k fuzz cases, n/2n/4n timing linear; `-i` emptied the file on an unencodable result; `UserString` hung walks; unprintable ints and deep path objects leaked `ValueError`/`RecursionError`; `unflatten` leaked `TypeError` on empty read-only values; NaN/Infinity accepted by the command; long `--indent` echoed; closed stdin traceback; fixed in ed941d8 and 1e60705 |
 | c | 2 | 1e60705 | FAIL | fixes confirmed; on POSIX `-i` reset the mode to 0600 and replaced symlinks; 9 mutant survivors; `get --raw` on a lone surrogate; fixed in d498f6b |
 | c | 3 | d498f6b | PASS (minor) | POSIX mode, symlinks and hard-link note confirmed in WSL; 19 new mutants, survivors M45, M48, M51, M52 and the raw `-i` error text closed in 224ac37 and confirmed killed on Windows and POSIX |
+| d. Packaging and real e2e | 1 | d62509a | PASS (3 minor) | clean-clone wheel and sdist, `twine check --strict`, metadata and contents, consumer script and `mypy --strict` from the installed wheel, the script by subprocess in about 30 cases, upgrade in place from PyPI 0.1.0, sdist install with its own suite (205 passed) and e2e, every CPython here (3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2, 3.14.2 free-threaded: 241 passed each); minor: `--indent 0` wording, no `python -m dotreach`, single quotes in a glob example; all three done in 7d9fc0b and f7a967a |
+| e. Contract strength (blind) | 1 | f7a967a | FAIL | 116 own mutants, 95 killed, 14 missing contracts (escaped `setdefault`, lowest negative index in `delete_copy`, mapping proxy type from `set_copy`, `python -m` exit code, UTF-8 console output, `ValueError` from a bad file name, BOM on file and stdin, error positions, message cut boundaries, `--indent 64`, `-` after options on 3.10/3.11), 6 argued equivalent, 1 POSIX-only, 3 caught only by its time limit; contracts and a bounded-time helper added in dfda733 |
+| e | 2 | dfda733 | PASS | all 14 killed by test failures, the three hangs now fail a bounded test; L05 killed on 3.11.5, M09 killed on Linux (WSL); equivalence of P14, P16, C05, WK3 holds, W05 and K04 hold for sequences that accept negative indices |
 
 ## Gates (item 15)
 
