@@ -13,9 +13,37 @@ Progress:
 - [x] Docs: README, GUIDE, CHANGELOG (items 11, 12)
 - [x] Packaging, e2e and upgrade from PyPI 0.1.0, every Python (items 8, 10, 13, 14)
 - [x] Five QA lenses report PASS (item 19)
-- [ ] Independent reviewer reports PASS (item 16)
-- [ ] Gates (item 15), final run
+- [x] Independent reviewer reports PASS (item 16)
+- [x] Gates (item 15), final run
 - [ ] PR and trace guard CLEAN (item 17); merge and publish left to the maintainer
+
+## Scorecard
+
+Independent review (item 16) at c613cb5: PASS on every item, minor findings fixed in 226ba51
+(stray `annotations` name at the package top, report module count, a dead `float` check in
+`get_as`, a test file over 200 lines, an outdated line in the round notes).
+
+| # | Item | Result |
+| --- | --- | --- |
+| 1 | Public API reviewed for stability | PASS: 24 names, the four 0.1.0 functions keep their signatures, every behaviour change in CHANGELOG and GUIDE |
+| 2 | `__all__` exact, no private imports in docs | PASS |
+| 3 | Docstrings with runnable examples, doctests | PASS: 23 doctests run by `pytest`; README (19 shown values, 6 commands) and GUIDE examples run as tests |
+| 4 | Typed end to end | PASS: `mypy --strict src tests` clean, `py.typed` shipped, `get_as` typed `T`, documented `Any` for stored values |
+| 5 | Typed, documented, bounded errors | PASS: five `DotreachError` subclasses, each also a built-in error; messages under 200 characters for 1 MB input; container errors pass through as documented |
+| 6 | Contract tests of every public name | PASS |
+| 7 | Real ground truth | PASS: RFC 6901 fetched live (manifest with sha256), glom, jmespath and PyPI 0.1.0 as oracles, Python's own item access in the property tests |
+| 8 | Real e2e from the wheel | PASS: script by subprocess, `python -m dotreach`, upgrade in place from PyPI 0.1.0 |
+| 9 | Seeded fuzz, no crash, hang or blowup | PASS: seeded property and hostile tests, bounded-time checks for work that once hung, linear growth measured by lens c |
+| 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2 and 3.14.2 free-threaded on this PC; POSIX-only tests on Linux 3.14.4 (WSL); 3.13 free-threaded not installed here |
+| 11 | README and `twine check` | PASS: `twine check --strict`, absolute links, verified "why" facts |
+| 12 | Dated CHANGELOG section | PASS: 1.0.0, 2026-10-16 |
+| 13 | pyproject 1.0.0, Production/Stable | PASS: SPDX `MIT`, classifiers 3.10 to 3.14, `Typing :: Typed`, Homepage, Source, Issues, Changelog URLs, no runtime dependency |
+| 14 | sdist and wheel contents | PASS: 13-module wheel with `py.typed` and LICENSE; sdist with the full suite and docs, no notes, caches or fetched third-party text |
+| 15 | Gates each exit 0 | PASS: see Gates |
+| 16 | Independent reviewer | PASS at c613cb5 |
+| 17 | PR and trace guard | see the PR; merge and publish left to the maintainer |
+| 18 | Contracts bite (mutations) | PASS: author 46, lens b 63 (two sweeps), lens c two sweeps (19 in round 3), lens e 116, reviewer spot check; every non-equivalent survivor killed by a contract |
+| 19 | Five independent QA lenses | PASS: a round 2, b round 4, c round 3, d round 1, e round 2 |
 
 ## Baseline on 0.2.0 (before any change)
 
@@ -178,4 +206,8 @@ most 40 new mutants on the code changed since the previous round.
 
 ## Gates (item 15)
 
-Pending final run.
+Final run at 226ba51 on a fresh clone (Elena's PC, CPython 3.14.2), each command on its own,
+with the RFC fetched, glom and jmespath installed, the 0.1.0 oracle and the PyPI upgrade test
+switched on: `ruff format --check .`, `ruff check .`, `mypy --strict src tests` (33 files) and
+`pytest` (255 passed, 4 skipped: the POSIX-only `-i` tests, which pass on Linux) all exit 0.
+`scripts/check.ps1` runs the same steps and stops at the first failing one.

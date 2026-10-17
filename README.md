@@ -1,5 +1,7 @@
 # dotreach
 
+[![Lianes8 Certified](https://lianes8studio.com/certified/lianes8-certified-badge.svg)](https://lianes8studio.com/certified)
+
 Typed, zero-dependency access to nested dicts and lists by dotted path: get, set,
 delete, has, pop, flatten, unflatten, wildcard matching, non-mutating updates, and a
 `dotreach` command for JSON on the shell.
