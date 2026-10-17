@@ -82,6 +82,67 @@ def test_in_place_writes_through_a_symlink(doc: Path, capsys: pytest.CaptureFixt
 
 
 @POSIX
+def test_the_mode_comes_from_the_target_not_the_link(
+    doc: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    os.chmod(doc, 0o640)
+    link = doc.parent / "link.json"
+    link.symlink_to(doc.name)
+    assert run(capsys, "set", "b", "2", "-i", str(link))[0] == 0
+    assert stat.S_IMODE(os.stat(doc).st_mode) == 0o640 and link.is_symlink()
+
+
+def test_a_link_in_another_folder_writes_next_to_its_target(
+    doc: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    other = doc.parent / "other"
+    other.mkdir()
+    link = other / "link.json"
+    try:
+        link.symlink_to(doc)
+    except OSError:
+        pytest.skip("this system does not let us create symlinks")
+    folders: list[str] = []
+    real = tempfile.mkstemp
+
+    def spy(*args: Any, **kwargs: Any) -> tuple[int, str]:
+        folders.append(str(kwargs.get("dir")))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(tempfile, "mkstemp", spy)
+    assert run(capsys, "set", "b", "2", "-i", str(link))[0] == 0
+    assert folders == [os.path.realpath(doc.parent)] and list(other.iterdir()) == [link]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows refuses to replace read-only files")
+def test_a_read_only_file_on_windows_is_refused_cleanly(
+    doc: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    os.chmod(doc, stat.S_IREAD)
+    try:
+        code, _, err = run(capsys, "set", "b", "2", "-i", str(doc))
+        assert code == 1 and err.startswith(f"dotreach: cannot write {doc}: ")
+        assert ".tmp" not in err and doc.read_text(encoding="utf-8") == '{"a": 1}'
+        assert [p.name for p in doc.parent.iterdir()] == ["d.json"]
+    finally:
+        os.chmod(doc, stat.S_IREAD | stat.S_IWRITE)
+
+
+@POSIX
+def test_a_folder_that_cannot_be_written_is_a_clean_error(
+    doc: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    if getattr(os, "geteuid", lambda: 1)() == 0:
+        pytest.skip("root may write anywhere")
+    os.chmod(doc.parent, 0o555)
+    try:
+        code, _, err = run(capsys, "set", "b", "2", "-i", str(doc))
+        assert code == 1 and err == f"dotreach: cannot write {doc}: Permission denied\n"
+    finally:
+        os.chmod(doc.parent, 0o755)
+
+
+@POSIX
 def test_a_hard_link_keeps_the_old_content_as_documented(
     doc: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

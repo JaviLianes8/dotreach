@@ -126,7 +126,10 @@ def _replace(path: Path, text: str) -> None:
 def _emit(args: argparse.Namespace, document: Any) -> int:
     output = _dump(document, args.indent)
     if getattr(args, "in_place", False):
-        _replace(Path(args.file), output + "\n")
+        try:
+            _replace(Path(args.file), output + "\n")
+        except OSError as error:
+            raise CliError(f"cannot write {args.file}: {error.strerror or error}") from None
         return 0
     _out(output)
     return 0

@@ -175,9 +175,13 @@ output is always strict JSON too. `VALUE` is parsed the same way when it is vali
 JSON and taken as a string otherwise (so `NaN` becomes the string `"NaN"`);
 `--string` forces a string. `-i` writes the result to a temporary file next to
 `FILE` and then replaces `FILE` with it, so a failure leaves `FILE` as it was. A
-symlink is followed and the file it points to is replaced; the file keeps its
-permission bits. What a replace cannot keep: other hard links to `FILE` still show
-the old content, and the new file belongs to the user who ran the command. Errors print `dotreach: <message>` on stderr and exit 1,
+symlink is followed and the file it points to is replaced, so the folder holding
+that file must be writable. On POSIX systems the file keeps its permission bits, and a
+read-only file is replaced like `sed -i` does; on Windows a read-only file is refused
+and the file's other attributes (hidden, access lists) are not carried over. What a
+replace cannot keep anywhere: other hard links to `FILE` still show the old content,
+and the new file belongs to the user who ran the command. A failed write prints
+`dotreach: cannot write FILE: <reason>` and leaves `FILE` as it was. Errors print `dotreach: <message>` on stderr and exit 1,
 input nested too deeply for Python's JSON reader included; `has` exits 1 when the path
 is absent, so check stderr to tell an absent path from an unreadable file. A reader
 that closes the output early (`| head`) ends the command quietly with exit 1. A path
